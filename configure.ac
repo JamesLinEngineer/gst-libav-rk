@@ -483,6 +483,19 @@ if test x$HAVE_LIBAV_UNINSTALLED = x1; then
 fi
 AM_CONDITIONAL(HAVE_LIBAV_UNINSTALLED, test x$HAVE_LIBAV_UNINSTALLED = x1)
 
+
+translit(dnm, m, l) AM_CONDITIONAL(USE_DRM, true)
+AG_GST_CHECK_FEATURE(DRM, [drm/kms libraries], drm, [
+  AG_GST_PKG_CHECK_MODULES(GST_ALLOCATORS, gstreamer-allocators-1.0)
+  PKG_CHECK_MODULES([DRM], [libdrm >= 2.4.55], HAVE_DRM=yes, HAVE_DRM=no)
+])
+
+translit(dnm, m, l) AM_CONDITIONAL(USE_DRMROCKCHIP, true)
+AG_GST_CHECK_FEATURE(DRMROCKCHIP, [rockchip drm/kms libraries], drmrockchip, [
+  PKG_CHECK_MODULES([X11], [x11], HAVE_X11=yes, HAVE_X11=no)
+  PKG_CHECK_MODULES([DRMROCKCHIP], [libdrm_rockchip], HAVE_DRMROCKCHIP=yes, HAVE_DRMROCKCHIP=no)
+])
+
 AC_CONFIG_FILES(
 Makefile
 common/Makefile
