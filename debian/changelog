@@ -1,0 +1,5 @@
+gstreamer1.0-libav-rockchip (1.10-5) testing; urgency=medium
+
+  [ James Lin ]
+  * init first version
+

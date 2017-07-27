@@ -1,0 +1,6 @@
+gstreamer-libav-rockchip for Debian
+------------------------------
+
+gstreamer libav rockchip is a gstreamer plugin to work with rockchip video hardware decoder.
+
+ -- James Lin <james.lin@rock-chips.com>  Thu, 17 Jul 2017 16:59:00 +0000
