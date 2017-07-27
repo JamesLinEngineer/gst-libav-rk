@@ -121,6 +121,7 @@ static void register_all(void)
     REGISTER_HWACCEL(WMV3_DXVA2,        wmv3_dxva2);
     REGISTER_HWACCEL(WMV3_VAAPI,        wmv3_vaapi);
     REGISTER_HWACCEL(WMV3_VDPAU,        wmv3_vdpau);
+    REGISTER_HWACCEL(HEVC_RKVDEC,       hevc_rkvdec);
 
     /* video codecs */
     REGISTER_ENCODER(A64MULTI,          a64multi);
