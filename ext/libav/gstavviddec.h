@@ -72,6 +72,9 @@ struct _GstFFMpegVidDec
   gint pool_height;
   enum AVPixelFormat pool_format;
   GstVideoInfo pool_info;
+
+  /* hardware decode */
+  gboolean hw_accel;
 };
 
 typedef struct _GstFFMpegVidDecClass GstFFMpegVidDecClass;

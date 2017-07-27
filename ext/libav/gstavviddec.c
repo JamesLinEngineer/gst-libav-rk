@@ -37,6 +37,9 @@
 #include "gstavutils.h"
 #include "gstavviddec.h"
 
+#include "gstdrmbufferpool.h"
+#include "gstdrmallocator.h"
+
 #define MAX_TS_MASK 0xff
 
 #define DEFAULT_LOWRES			0
@@ -268,6 +271,7 @@ gst_ffmpegviddec_init (GstFFMpegVidDec * ffmpegdec)
   ffmpegdec->debug_mv = DEFAULT_DEBUG_MV;
   ffmpegdec->max_threads = DEFAULT_MAX_THREADS;
   ffmpegdec->output_corrupt = DEFAULT_OUTPUT_CORRUPT;
+  ffmpegdec->hw_accel = FALSE;
 
   GST_PAD_SET_ACCEPT_TEMPLATE (GST_VIDEO_DECODER_SINK_PAD (ffmpegdec));
   gst_video_decoder_set_use_default_pad_acceptcaps (GST_VIDEO_DECODER_CAST
@@ -671,6 +675,7 @@ gst_ffmpegviddec_ensure_internal_pool (GstFFMpegVidDec * ffmpegdec,
   GstVideoFormat format;
   GstCaps *caps;
   GstStructure *config;
+  GstAllocator* allocator = NULL;
   gint i;
 
   if (ffmpegdec->internal_pool != NULL &&
@@ -685,18 +690,28 @@ gst_ffmpegviddec_ensure_internal_pool (GstFFMpegVidDec * ffmpegdec,
   format = gst_ffmpeg_pixfmt_to_videoformat (picture->format);
   gst_video_info_set_format (&info, format, picture->width, picture->height);
 
+  
+  ffmpegdec->hw_accel = (format == GST_VIDEO_FORMAT_NV12);
+  GST_DEBUG_OBJECT (ffmpegdec, "hardware accel %d", ffmpegdec->hw_accel);
+
   for (i = 0; i < G_N_ELEMENTS (ffmpegdec->stride); i++)
     ffmpegdec->stride[i] = -1;
 
   if (ffmpegdec->internal_pool)
     gst_object_unref (ffmpegdec->internal_pool);
 
-  ffmpegdec->internal_pool = gst_video_buffer_pool_new ();
+  if (ffmpegdec->hw_accel) {
+    ffmpegdec->internal_pool = gst_drm_buffer_pool_new();
+    allocator = gst_drm_allocator_new (0);
+  } else {
+    ffmpegdec->internal_pool = gst_video_buffer_pool_new ();
+  }
+
   config = gst_buffer_pool_get_config (ffmpegdec->internal_pool);
 
   caps = gst_video_info_to_caps (&info);
   gst_buffer_pool_config_set_params (config, caps, info.size, 2, 0);
-  gst_buffer_pool_config_set_allocator (config, NULL, &params);
+  gst_buffer_pool_config_set_allocator (config, allocator, &params);
   gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
 
   gst_ffmpegvideodec_prepare_dr_pool (ffmpegdec,
@@ -816,6 +831,13 @@ gst_ffmpegviddec_get_buffer2 (AVCodecContext * context, AVFrame * picture,
     }
     GST_LOG_OBJECT (ffmpegdec, "linesize %d, data %p", picture->linesize[c],
         picture->data[c]);
+  }
+
+  if (ffmpegdec->hw_accel) {
+    GstMemory *mem = gst_buffer_peek_memory (dframe->buffer, 0);
+    if (mem != NULL && gst_is_drm_memory(mem)) {
+      picture->linesize[2] = gst_drm_memory_get_fd(mem);
+    }
   }
 
   picture->buf[0] = av_buffer_create (NULL, 0, dummy_free_buffer, dframe, 0);
