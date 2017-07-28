@@ -175,11 +175,12 @@ gst_drm_height_from_drm (guint32 drmfmt, guint32 height)
     case DRM_FORMAT_YUV420:
     case DRM_FORMAT_YVU420:
     case DRM_FORMAT_YUV422:
-    case DRM_FORMAT_NV12:
     case DRM_FORMAT_NV21:
       ret = height * 3 / 2;
       break;
     case DRM_FORMAT_NV16:
+    case DRM_FORMAT_NV12:
+    case DRM_FORMAT_NV12_10:
       ret = height * 2;
       break;
     default:
@@ -253,6 +254,7 @@ gst_drm_allocator_alloc (GstAllocator * allocator, GstVideoInfo * vinfo)
   guint32 offsets[4] = { 0, };
   guint32 pitches[4] = { 0, };
   gint i, ret;
+  gpointer p = NULL;
 
   /* construct memory*/
   drmmem = g_slice_new0 (GstDRMMemory);
@@ -313,11 +315,10 @@ gst_drm_allocator_alloc (GstAllocator * allocator, GstVideoInfo * vinfo)
 
   ret = drmModeAddFB2 (alloc->priv->device_fd, w, h, fmt, bo_handles, pitches,
       offsets, &drmmem->fb_id, 0);
+
+  p = gst_drm_memory_map(mem, drmmem->bo->size, 0);
   
-  //if (ret)
-  //  goto create_failed;
-  
-  GST_DEBUG_OBJECT(alloc, "Bind drm mem object: dmafd:%d fb:%d", drmmem->dma_fd, drmmem->fb_id);
+  GST_DEBUG_OBJECT(alloc, "Bind drm mem object: dmafd:%d fb:%d pointer:%p", drmmem->dma_fd, drmmem->fb_id, p);
 
   return mem;
 

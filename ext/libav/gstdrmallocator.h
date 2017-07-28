@@ -93,6 +93,8 @@ GstAllocator* gst_drm_allocator_new (gint fd);
 GstMemory* gst_drm_allocator_alloc (GstAllocator *allocator,
 					  GstVideoInfo *vinfo);
 
+static gpointer gst_drm_memory_map (GstMemory * mem, gsize maxsize, GstMapFlags flags);
+
 G_END_DECLS
 
 
