@@ -2693,11 +2693,13 @@ static int hevc_frame_start(HEVCContext *s)
                            ((s->ps.sps->height >> s->ps.sps->log2_min_cb_size) + 1);
     int ret;
 
-    memset(s->horizontal_bs, 0, s->bs_width * s->bs_height);
-    memset(s->vertical_bs,   0, s->bs_width * s->bs_height);
-    memset(s->cbf_luma,      0, s->ps.sps->min_tb_width * s->ps.sps->min_tb_height);
-    memset(s->is_pcm,        0, (s->ps.sps->min_pu_width + 1) * (s->ps.sps->min_pu_height + 1));
-    memset(s->tab_slice_address, -1, pic_size_in_ctb * sizeof(*s->tab_slice_address));
+    if (!s->avctx->hwaccel) {
+        memset(s->horizontal_bs, 0, s->bs_width * s->bs_height);
+        memset(s->vertical_bs,   0, s->bs_width * s->bs_height);
+        memset(s->cbf_luma,      0, s->ps.sps->min_tb_width * s->ps.sps->min_tb_height);
+        memset(s->is_pcm,        0, (s->ps.sps->min_pu_width + 1) * (s->ps.sps->min_pu_height + 1));
+        memset(s->tab_slice_address, -1, pic_size_in_ctb * sizeof(*s->tab_slice_address));
+    }
 
     s->is_decoded        = 0;
     s->first_nal_type    = s->nal_unit_type;
