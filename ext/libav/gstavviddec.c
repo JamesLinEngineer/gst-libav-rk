@@ -1420,8 +1420,8 @@ gst_ffmpegviddec_video_frame (GstFFMpegVidDec * ffmpegdec,
     GstVideoMeta *vmeta = gst_buffer_get_video_meta (out_frame->output_buffer);
     if (vmeta) {
       GstVideoInfo *info = &ffmpegdec->output_state->info;
-      g_assert (vmeta->width == GST_VIDEO_INFO_WIDTH (info));
-      g_assert (vmeta->height == GST_VIDEO_INFO_HEIGHT (info));
+      g_assert (vmeta->width >= GST_VIDEO_INFO_WIDTH (info));
+      g_assert (vmeta->height >= GST_VIDEO_INFO_HEIGHT (info));
     }
   }
 #endif
@@ -1896,8 +1896,8 @@ gst_ffmpegviddec_decide_allocation (GstVideoDecoder * decoder, GstQuery * query)
   }
 
   if (have_videometa && ffmpegdec->internal_pool
-      && ffmpegdec->pool_width == state->info.width
-      && ffmpegdec->pool_height == state->info.height) {
+      && ffmpegdec->pool_width >= state->info.width
+      && ffmpegdec->pool_height >= state->info.height) {
     update_pool = TRUE;
     gst_object_unref (pool);
     pool = gst_object_ref (ffmpegdec->internal_pool);
