@@ -823,6 +823,7 @@ OBJS-$(CONFIG_VP9_D3D11VA_HWACCEL)        += dxva2_vp9.o
 OBJS-$(CONFIG_VP9_DXVA2_HWACCEL)          += dxva2_vp9.o
 OBJS-$(CONFIG_VP9_VAAPI_HWACCEL)          += vaapi_vp9.o
 OBJS-$(CONFIG_HEVC_RKVDEC_HWACCEL)        += rkvdec_hevc.o allocator_drm.o
+OBJS-$(CONFIG_H264_RKVDEC_HWACCEL)        += rkvdec_h264.o allocator_drm.o
 
 # libavformat dependencies
 OBJS-$(CONFIG_ISO_MEDIA)               += mpeg4audio.o mpegaudiodata.o
