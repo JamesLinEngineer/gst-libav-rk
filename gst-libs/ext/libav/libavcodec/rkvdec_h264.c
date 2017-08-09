@@ -604,8 +604,8 @@ static int rkvdec_h264_regs_gen_reg(AVCodecContext *avctx)
     hw_regs->swreg3_picpar.sw_slice_num_highbit = 1;
     hw_regs->swreg3_picpar.sw_y_hor_virstride = ALIGN(pic->f->width, 16) / 16;
     hw_regs->swreg3_picpar.sw_uv_hor_virstride =  ALIGN(pic->f->width, 16) / 16;
-    hw_regs->swreg8_y_virstride.sw_y_virstride = ALIGN(pic->f->width * pic->f->height, 16) / 16;
-    hw_regs->swreg9_yuv_virstride.sw_yuv_virstride = ALIGN(pic->f->width * pic->f->height * 3/2, 16) / 16;
+    hw_regs->swreg8_y_virstride.sw_y_virstride = ALIGN(ALIGN(pic->f->width, 16) * ALIGN(pic->f->height, 16), 16) / 16;
+    hw_regs->swreg9_yuv_virstride.sw_yuv_virstride = ALIGN(ALIGN(pic->f->width, 16) * ALIGN(pic->f->height, 16) * 3 / 2, 16) / 16;
     mb_width = pp->wFrameWidthInMbsMinus1 + 1;
     mb_height = (2 - pp->frame_mbs_only_flag) * (pp->wFrameHeightInMbsMinus1 + 1);
     mv_size = mb_width * mb_height * 8;
@@ -723,7 +723,7 @@ static int rkvdec_h264_end_frame(AVCodecContext *avctx)
     if (fp1 == NULL)
        fp1 = fopen("hal.bin", "wb");
     av_log(avctx, AV_LOG_INFO, "write cur_pic fd %d", ff_rkvdec_get_fd(h->cur_pic_ptr->f));
-    fwrite(h->cur_pic_ptr->f->data[0],1, 720*576*1.5, fp1);
+    fwrite(h->cur_pic_ptr->f->data[0],1, ALIGN(h->cur_pic_ptr->width, 16) * ALIGN(h->cur_pic_ptr->height, 16) * 1.5, fp1);
     fflush(fp1);
 #endif
     
