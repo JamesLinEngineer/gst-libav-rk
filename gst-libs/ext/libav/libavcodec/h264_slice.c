@@ -492,7 +492,6 @@ static int h264_frame_start(H264Context *h)
     pic->sei_recovery_frame_cnt = h->sei.recovery_point.recovery_frame_cnt;
 
     pic->f->pict_type = h->slice_ctx[0].slice_type;
-
     if ((ret = alloc_picture(h, pic)) < 0)
         return ret;
     if(!h->frame_recovered && !h->avctx->hwaccel
@@ -759,7 +758,8 @@ static enum AVPixelFormat get_pixel_format(H264Context *h, int force_callback)
                      CONFIG_H264_VAAPI_HWACCEL + \
                      (CONFIG_H264_VDA_HWACCEL * 2) + \
                      CONFIG_H264_VIDEOTOOLBOX_HWACCEL + \
-                     CONFIG_H264_VDPAU_HWACCEL)
+                     CONFIG_H264_VDPAU_HWACCEL + \
+                     CONFIG_H264_RKVDEC_HWACCEL)
     enum AVPixelFormat pix_fmts[HWACCEL_MAX + 2], *fmt = pix_fmts;
     const enum AVPixelFormat *choices = pix_fmts;
     int i;
@@ -841,6 +841,9 @@ static enum AVPixelFormat get_pixel_format(H264Context *h, int force_callback)
 #endif
 #if CONFIG_H264_VIDEOTOOLBOX_HWACCEL
             *fmt++ = AV_PIX_FMT_VIDEOTOOLBOX;
+#endif
+#if CONFIG_H264_RKVDEC_HWACCEL
+            *fmt++ = AV_PIX_FMT_NV12;
 #endif
             if (h->avctx->codec->pix_fmts)
                 choices = h->avctx->codec->pix_fmts;
