@@ -337,7 +337,9 @@ static void fill_picture_parameters(const H264Context *h, LPRKVDEC_PicParams_H26
         pp->RefPicLayerIdList[i] = 0;
     }
 
-    if (sps->scaling_matrix_present)
+    if (sps->scaling_matrix_present ||
+        memcmp(sps->scaling_matrix4, pps->scaling_matrix4, sizeof(sps->scaling_matrix4)) ||
+        memcmp(sps->scaling_matrix8, pps->scaling_matrix8, sizeof(sps->scaling_matrix8)))
         pp->scaleing_list_enable_flag = 1;
     else
         pp->scaleing_list_enable_flag = 0;
@@ -556,22 +558,21 @@ static int rkvdec_h264_regs_gen_scanlist(AVCodecContext* avctx)
     RKVDECH264Context * const ctx = ff_rkvdec_get_context(avctx);
     LPRKVDEC_PicParams_H264 pp = ctx->pic_param;
     LPRKVDEC_ScalingList_H264 sl = ctx->scaling_list;
-    void* scanlist_ptr = ctx->scaling_list_data->data[0];
-    int i, j;
     
-    PutBitContext64 bp;
-    init_put_bits_a64(&bp, scanlist_ptr, RKVDECH264_SCALING_LIST_SIZE);
-    
-    memset(scanlist_ptr, 0, RKVDECH264_SCALING_LIST_SIZE);
-
     if (pp->scaleing_list_enable_flag) {
+        void* scanlist_ptr = ctx->scaling_list_data->data[0];
+        int i, j;
+        PutBitContext64 bp;
+
+        init_put_bits_a64(&bp, scanlist_ptr, RKVDECH264_SCALING_LIST_SIZE);
+        memset(scanlist_ptr, 0, RKVDECH264_SCALING_LIST_SIZE);
         for (i = 0; i < 6; i++) {
             for (j = 0; j < 16; j++)
                 put_bits_a64(&bp, 8, sl->bScalingLists4x4[i][j]);
         }
         for (i = 0; i < 2; i++) {
             for (j = 0; j < 64; j++)
-                put_bits_a64(&bp, 8, sl->bScalingLists4x4[i][j]);
+                put_bits_a64(&bp, 8, sl->bScalingLists8x8[i][j]);
         }
     }
 
@@ -622,8 +623,8 @@ static int rkvdec_h264_regs_gen_reg(AVCodecContext *avctx)
         hw_regs->swreg10_24_refer0_14_base[i].sw_ref_topfield_used = (pp->UsedForReferenceFlags >> (2 * i + 0)) & 0x01;
         hw_regs->swreg10_24_refer0_14_base[i].sw_ref_botfield_used = (pp->UsedForReferenceFlags >> (2 * i + 1)) & 0x01;
         hw_regs->swreg10_24_refer0_14_base[i].sw_ref_colmv_use_flag = (pp->RefPicColmvUsedFlags >> i) & 0x01;
-        hw_regs->swreg25_39_refer0_14_poc[i] = hw_regs->swreg25_39_refer0_14_poc[i] & 0xf;
-        hw_regs->swreg10_24_refer0_14_base[i].sw_ref_colmv_use_flag = 0x1;
+        hw_regs->swreg25_39_refer0_14_poc[i] = hw_regs->swreg25_39_refer0_14_poc[i];
+        hw_regs->swreg10_24_refer0_14_base[i].sw_ref_colmv_use_flag = 0x01;
 
         if (pp->RefFrameList[i].bPicEntry != 0xff) {
             ref_index  = pp->RefFrameList[i].Index7Bits;
@@ -640,6 +641,7 @@ static int rkvdec_h264_regs_gen_reg(AVCodecContext *avctx)
     hw_regs->swreg48_refer15_base.sw_ref_topfield_used = (pp->UsedForReferenceFlags >> 30) & 0x01;
     hw_regs->swreg48_refer15_base.sw_ref_botfield_used = (pp->UsedForReferenceFlags >> 31) & 0x01;
     hw_regs->swreg48_refer15_base.sw_ref_colmv_use_flag = (pp->RefPicColmvUsedFlags >> 15) & 0x01;
+    hw_regs->swreg48_refer15_base.sw_ref_colmv_use_flag = 0x01;
     
     if (pp->RefFrameList[15].bPicEntry != 0xff) {
         ref_index = pp->RefFrameList[15].Index7Bits;
