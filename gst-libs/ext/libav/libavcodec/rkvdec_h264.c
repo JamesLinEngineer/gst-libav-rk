@@ -180,7 +180,7 @@ struct _RKVDEC_PicParams_H264 {
 #define RKVDECH264_RPS_SIZE              (128 + 128)         /* bytes */
 #define RKVDECH264_SCALING_LIST_SIZE     (6*16+2*64 + 128)   /* bytes */
 #define RKVDECH264_ERROR_INFO_SIZE       (256*144*4)         /* bytes */
-#define RKVDECH264_DATA_SIZE             (4096 * 1024) 
+#define RKVDECH264_DATA_SIZE             (2048 * 1024) 
 
 struct _RKVDEC_PicParams{
 
@@ -361,15 +361,23 @@ static void fill_stream_data(AVCodecContext* avctx, const uint8_t  *buffer, uint
     unsigned int offset = ctx->stream_data->pkt_size;
     unsigned int left_size = ctx->stream_data->linesize[0] - offset;
 
-    if (data_ptr && left_size > size) {
-        memcpy(data_ptr + offset, start_code, sizeof(start_code));
-        offset += sizeof(start_code);
-        memcpy(data_ptr + offset, buffer, size);
-        ctx->stream_data->pkt_size += (size + sizeof(start_code)); 
-		av_log(avctx, AV_LOG_INFO, "fill_stream_data pkg_size %d size %d", ctx->stream_data->pkt_size, size);
-    } else {
-        av_log(avctx, AV_LOG_ERROR, "fill_stream_data err!");
+    if (data_ptr && left_size < (size + sizeof(start_code))) {
+        AVFrame* new_pkt = av_frame_alloc();
+        new_pkt->linesize[0] = offset + size + RKVDECH264_DATA_SIZE;
+        ctx->allocator->alloc(ctx->allocator_ctx, new_pkt);
+        memcpy(new_pkt->data[0], ctx->stream_data->data[0], ctx->stream_data->pkt_size);
+        ctx->allocator->free(ctx->allocator_ctx, ctx->stream_data);
+        memcpy(ctx->stream_data, new_pkt, sizeof(AVFrame));
+        data_ptr = ctx->stream_data->data[0];
+        av_free(new_pkt);
     }
+
+    memcpy(data_ptr + offset, start_code, sizeof(start_code));
+    offset += sizeof(start_code);
+    memcpy(data_ptr + offset, buffer, size);
+    ctx->stream_data->pkt_size += (size + sizeof(start_code));
+
+    av_log(avctx, AV_LOG_INFO, "fill_stream_data pkg_size %d size %d", ctx->stream_data->pkt_size, size);
 }
 
 
@@ -823,7 +831,10 @@ static int rkvdec_h264_context_uninit(AVCodecContext *avctx)
     av_free(ctx->scaling_list_data);
     av_free(ctx->errorinfo_data);
     av_free(ctx->stream_data);
-    
+
+    av_free(ctx->hw_regs);
+    av_free(ctx->pic_param);
+    av_free(ctx->scaling_list);
 
     if (ctx->vpu_socket > 0) {
         close(ctx->vpu_socket);

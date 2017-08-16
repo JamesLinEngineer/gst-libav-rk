@@ -851,17 +851,28 @@ skip:
 static void fill_stream_data(AVCodecContext* avctx, const uint8_t  *buffer, uint32_t size)
 {
     RKVDECHevcContext * const ctx = ff_rkvdec_get_context(avctx);
-    static const unsigned char start_code[] = {0, 0, 1 };    
+    static const unsigned char start_code[] = {0, 0, 1 };
     unsigned char *data_ptr = ctx->stream_data->data[0];
-    
-    if (data_ptr && ctx->stream_data->linesize[0] > size) {
-        memcpy(data_ptr, start_code, sizeof(start_code));
-        data_ptr += sizeof(start_code);
-        memcpy(data_ptr, buffer, size);
-        ctx->stream_data->pkt_size = size + sizeof(start_code);
-    } else {
-        av_log(avctx, AV_LOG_ERROR, "fill_stream_data err!");
+    unsigned int offset = ctx->stream_data->pkt_size;
+    unsigned int left_size = ctx->stream_data->linesize[0] - offset;
+
+    if (data_ptr && left_size < (size + sizeof(start_code))) {
+        AVFrame* new_pkt = av_frame_alloc();
+        new_pkt->linesize[0] = offset + size + DATA_SIZE;
+        ctx->allocator->alloc(ctx->allocator_ctx, new_pkt);
+        memcpy(new_pkt->data[0], ctx->stream_data->data[0], ctx->stream_data->pkt_size);
+        ctx->allocator->free(ctx->allocator_ctx, ctx->stream_data);
+        memcpy(ctx->stream_data, new_pkt, sizeof(AVFrame));
+        data_ptr = ctx->stream_data->data[0];
+        av_free(new_pkt);
     }
+
+    memcpy(data_ptr + offset, start_code, sizeof(start_code));
+    offset += sizeof(start_code);
+    memcpy(data_ptr + offset, buffer, size);
+    ctx->stream_data->pkt_size += (size + sizeof(start_code));
+
+    av_log(avctx, AV_LOG_INFO, "fill_stream_data pkg_size %d size %d", ctx->stream_data->pkt_size, size);
 }
 
 static int rkvdec_hevc_regs_gen_rps(AVCodecContext* avctx)
@@ -1202,6 +1213,7 @@ static int rkvdec_hevc_start_frame(AVCodecContext          *avctx,
     fill_scaling_lists(h, ctx->scaling_list, ctx->scaling_rk);
 
     memset(ctx->rps_info, 0, sizeof(RKVDEC_Slice_RPS_Info));
+    ctx->stream_data->pkt_size = 0;
 
     return 0;   
 }
@@ -1327,7 +1339,17 @@ static int rkvdec_hevc_context_uninit(AVCodecContext *avctx)
     ctx->allocator->free(ctx->allocator_ctx, ctx->rps_data);
     ctx->allocator->free(ctx->allocator_ctx, ctx->stream_data);
 
+    av_free(ctx->cabac_table_data);
+    av_free(ctx->scaling_list_data);
+    av_free(ctx->pps_data);
+    av_free(ctx->rps_data);
+    av_free(ctx->stream_data);
+
     av_free(ctx->pic_param);
+    av_free(ctx->scaling_list);
+    av_free(ctx->scaling_rk);
+    av_free(ctx->hw_regs);
+    av_free(ctx->rps_info);
 
     if (ctx->vpu_socket > 0) {
         close(ctx->vpu_socket);
