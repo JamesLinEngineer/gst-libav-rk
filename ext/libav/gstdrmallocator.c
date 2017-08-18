@@ -228,6 +228,10 @@ gst_drm_allocator_free (GstAllocator * allocator, GstMemory * mem)
       drmmem->bo->ptr = NULL;
   }
 
+  /* close fd*/
+  if (drmmem->dma_fd > 0)
+    close(drmmem->dma_fd);
+
   /* destory drm buffer */
   arg.handle = drmmem->bo->handle;
 
@@ -362,7 +366,8 @@ gst_drm_allocator_set_property (GObject * object, guint prop_id,
     case PROP_DRM_FD:{
       int fd = g_value_get_int (value);
       if (fd > -1)
-        alloc->priv->device_fd = dup (fd);
+        alloc->priv->device_fd = fd;
+
       break;
     }
     default:
@@ -378,6 +383,7 @@ gst_drm_allocator_finalize (GObject * obj)
 
   alloc = GST_DRM_ALLOCATOR (obj);
 
+  GST_DEBUG_OBJECT(alloc, "finalize drm allocator fd(%d)", alloc->priv->device_fd);
   if (check_fd (alloc))
     close (alloc->priv->device_fd);
 
@@ -502,7 +508,6 @@ gst_drm_allocator_new (int fd)
   if (fd == 0)
     fd = drmOpen ("rockchip", NULL);
 
-  GST_DEBUG_OBJECT(NULL, "New drm allocator fd(%d)", fd);
   return g_object_new (GST_TYPE_DRM_ALLOCATOR, "name",
       "DRMMemory::allocator", "drm-fd", fd, NULL);
 }

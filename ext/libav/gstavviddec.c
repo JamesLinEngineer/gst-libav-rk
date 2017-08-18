@@ -727,6 +727,11 @@ gst_ffmpegviddec_ensure_internal_pool (GstFFMpegVidDec * ffmpegdec,
   ffmpegdec->pool_height = picture->height;
   ffmpegdec->pool_format = picture->format;
   ffmpegdec->pool_info = info;
+
+  if (allocator) {
+    gst_object_unref (allocator);
+    allocator = NULL;
+  }
 }
 
 static gboolean

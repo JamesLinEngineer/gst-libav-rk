@@ -1338,6 +1338,7 @@ static int rkvdec_hevc_context_uninit(AVCodecContext *avctx)
     ctx->allocator->free(ctx->allocator_ctx, ctx->pps_data);
     ctx->allocator->free(ctx->allocator_ctx, ctx->rps_data);
     ctx->allocator->free(ctx->allocator_ctx, ctx->stream_data);
+    ctx->allocator->close(ctx->allocator_ctx);
 
     av_free(ctx->cabac_table_data);
     av_free(ctx->scaling_list_data);

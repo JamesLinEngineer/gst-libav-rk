@@ -824,7 +824,8 @@ static int rkvdec_h264_context_uninit(AVCodecContext *avctx)
     av_log(avctx, AV_LOG_INFO, "RK_H264_DEC: rkvdec_h264_context_uninit\n");
     ctx->allocator->free(ctx->allocator_ctx, ctx->syntax_data);
     ctx->allocator->free(ctx->allocator_ctx, ctx->stream_data);
-    
+    ctx->allocator->close(ctx->allocator_ctx);
+
     av_free(ctx->syntax_data);
     av_free(ctx->pps_data);
     av_free(ctx->rps_data);
