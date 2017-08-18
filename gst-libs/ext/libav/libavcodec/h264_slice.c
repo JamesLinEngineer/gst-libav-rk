@@ -1404,7 +1404,7 @@ static int h264_field_start(H264Context *h, const H264SliceContext *sl,
 
     /* Shorten frame num gaps so we don't have to allocate reference
      * frames just to throw them away */
-    if (h->poc.frame_num != h->poc.prev_frame_num) {
+    if (h->poc.frame_num != h->poc.prev_frame_num && h->poc.prev_frame_num >= 0) {
         int unwrap_prev_frame_num = h->poc.prev_frame_num;
         int max_frame_num         = 1 << sps->log2_max_frame_num;
 
@@ -1478,7 +1478,8 @@ static int h264_field_start(H264Context *h, const H264SliceContext *sl,
     }
 
     while (h->poc.frame_num != h->poc.prev_frame_num && !h->first_field &&
-           h->poc.frame_num != (h->poc.prev_frame_num + 1) % (1 << sps->log2_max_frame_num)) {
+           h->poc.frame_num != (h->poc.prev_frame_num + 1) % (1 << sps->log2_max_frame_num) &&
+           h->poc.prev_frame_num >= 0 && !h->avctx->hwaccel) {
         H264Picture *prev = h->short_ref_count ? h->short_ref[0] : NULL;
         av_log(h->avctx, AV_LOG_DEBUG, "Frame num gap %d %d\n",
                h->poc.frame_num, h->poc.prev_frame_num);

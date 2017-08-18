@@ -1381,6 +1381,13 @@ gst_ffmpegviddec_video_frame (GstFFMpegVidDec * ffmpegdec,
   if (len < 0 || *have_data == 0)
     goto beach;
 
+  /* drop error flag frame */
+  if (ffmpegdec->picture->decode_error_flags) {
+    GST_WARNING_OBJECT(ffmpegdec, "after decode: error %d to drop", ffmpegdec->picture->decode_error_flags);
+    av_frame_unref(ffmpegdec->picture);
+    goto beach;
+  }
+
   /* get the output picture timing info again */
   out_dframe = ffmpegdec->picture->opaque;
   out_frame = gst_video_codec_frame_ref (out_dframe->frame);

@@ -258,11 +258,19 @@ static void fill_picture_parameters(const H264Context *h, LPRKVDEC_PicParams_H26
                 pp->UsedForReferenceFlags |= 1 << (2*i + 0);
             if (r->reference & PICT_BOTTOM_FIELD)
                 pp->UsedForReferenceFlags |= 1 << (2*i + 1);
+
+            if (j - 1 < h->short_ref_count)
+                current_picture->f->decode_error_flags |= r->f->decode_error_flags;
+
         } else {
             pp->RefFrameList[i].bPicEntry = 0xff;
             pp->FieldOrderCntList[i][0]   = 0;
             pp->FieldOrderCntList[i][1]   = 0;
             pp->FrameNumList[i]           = 0;
+            if (j - 1 < h->short_ref_count) {
+                av_log(h, AV_LOG_WARNING, "fill_picture_parameters miss short ref");
+                current_picture->f->decode_error_flags = FF_DECODE_ERROR_MISSING_REFERENCE;
+            }
         }
     }
 
@@ -297,10 +305,10 @@ static void fill_picture_parameters(const H264Context *h, LPRKVDEC_PicParams_H26
     pp->StatusReportFeedbackNumber    = 1;
     pp->CurrFieldOrderCnt[0] = 0;
     if ((h->picture_structure & PICT_TOP_FIELD) && current_picture->field_poc[0] != INT_MAX)
-        pp->CurrFieldOrderCnt[0] = current_picture->field_poc[0] & 0xf;
+        pp->CurrFieldOrderCnt[0] = current_picture->field_poc[0];
     pp->CurrFieldOrderCnt[1] = 0;
     if ((h->picture_structure & PICT_BOTTOM_FIELD) && current_picture->field_poc[1] != INT_MAX)
-        pp->CurrFieldOrderCnt[1] = current_picture->field_poc[1] & 0xf;
+        pp->CurrFieldOrderCnt[1] = current_picture->field_poc[1];
     pp->pic_init_qs_minus26           = pps->init_qs - 26;
     pp->chroma_qp_index_offset        = pps->chroma_qp_index_offset[0];
     pp->second_chroma_qp_index_offset = pps->chroma_qp_index_offset[1];
@@ -710,6 +718,14 @@ static int rkvdec_h264_end_frame(AVCodecContext *avctx)
     int ret;
 
     av_log(avctx, AV_LOG_INFO, "RK_H264_DEC: rkvdec_h264_end_frame\n");
+
+    if (ctx->stream_data->pkt_size <= 0) {
+        av_log(avctx, AV_LOG_WARNING, "RK_H264_DEC: rkvdec_h264_end_frame not valid stream\n");
+        if (h->cur_pic_ptr && h->cur_pic_ptr->f)
+            h->cur_pic_ptr->f->decode_error_flags = FF_DECODE_ERROR_INVALID_BITSTREAM;
+        return 0;
+    }
+
     rkvdec_h264_regs_gen_pps(avctx);
     rkvdec_h264_regs_gen_rps(avctx);
     rkvdec_h264_regs_gen_scanlist(avctx);
