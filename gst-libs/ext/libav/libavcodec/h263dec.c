@@ -47,6 +47,9 @@
 
 static enum AVPixelFormat h263_get_format(AVCodecContext *avctx)
 {
+#define HWACCEL_MAX (CONFIG_H263_RKVDEC_HWACCEL)
+    enum AVPixelFormat pix_fmts[HWACCEL_MAX + 2], *fmt = pix_fmts;
+
     if (avctx->codec->id == AV_CODEC_ID_MSS2)
         return AV_PIX_FMT_YUV420P;
 
@@ -55,8 +58,17 @@ static enum AVPixelFormat h263_get_format(AVCodecContext *avctx)
             avctx->color_range = AVCOL_RANGE_MPEG;
         return AV_PIX_FMT_GRAY8;
     }
-
-    return avctx->pix_fmt = ff_get_format(avctx, avctx->codec->pix_fmts);
+    switch (avctx->codec->pix_fmts[0]) {
+    case AV_PIX_FMT_YUV420P:
+    case AV_PIX_FMT_YUVJ420P:
+#if CONFIG_H263_RKVDEC_HWACCEL
+	*fmt++ = AV_PIX_FMT_NV12;
+#endif
+      	break;
+    }
+    *fmt++ = avctx->codec->pix_fmts[0];
+    *fmt = AV_PIX_FMT_NONE;
+    return avctx->pix_fmt = ff_get_format(avctx, pix_fmts);
 }
 
 av_cold int ff_h263_decode_init(AVCodecContext *avctx)
@@ -198,7 +210,7 @@ static int decode_slice(MpegEncContext *s)
     ff_set_qscale(s, s->qscale);
 
     if (s->avctx->hwaccel) {
-        const uint8_t *start = s->gb.buffer + get_bits_count(&s->gb) / 8;
+        const uint8_t *start = s->gb.buffer ;
         ret = s->avctx->hwaccel->decode_slice(s->avctx, start, s->gb.buffer_end - start);
         // ensure we exit decode loop
         s->mb_y = s->mb_height;
@@ -415,9 +427,8 @@ int ff_h263_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
     int ret;
     int slice_ret = 0;
     AVFrame *pict = data;
-
     /* no supplementary picture */
-    if (buf_size == 0) {
+    if (buf_size ==0){
         /* special case for last picture */
         if (s->low_delay == 0 && s->next_picture_ptr) {
             if ((ret = av_frame_ref(pict, s->next_picture_ptr->f)) < 0)
@@ -549,9 +560,8 @@ retry:
         ret = ff_set_dimensions(avctx, s->width, s->height);
         if (ret < 0)
             return ret;
-
         ff_set_sar(avctx, avctx->sample_aspect_ratio);
-
+     av_log(s->avctx, AV_LOG_ERROR, "ff_mpv_common_frame_size_change\n");
         if ((ret = ff_mpv_common_frame_size_change(s)))
             return ret;
 
@@ -765,3 +775,4 @@ AVCodec ff_h263p_decoder = {
     .max_lowres     = 3,
     .pix_fmts       = ff_h263_hwaccel_pixfmt_list_420,
 };
+

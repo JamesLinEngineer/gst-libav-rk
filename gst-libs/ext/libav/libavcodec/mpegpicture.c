@@ -159,7 +159,7 @@ static int alloc_frame_buffer(AVCodecContext *avctx,  Picture *pic,
         return -1;
     }
 
-    if (pic->f->linesize[1] != pic->f->linesize[2]) {
+    if (!avctx->hwaccel && pic->f->linesize[1] != pic->f->linesize[2]) {
         av_log(avctx, AV_LOG_ERROR,
                "get_buffer() failed (uv stride mismatch)\n");
         ff_mpeg_unref_picture(avctx, pic);
