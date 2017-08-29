@@ -40,7 +40,7 @@ struct H264dRkvRegs_t {
         unsigned int    codec_flag : 1;
         unsigned int    reserve1 : 1;
         unsigned int    prod_num : 16;
-    } swreg0_id; // 32bit
+    } swreg0_id;
     struct {
         unsigned int    sw_dec_e : 1;//0
         unsigned int    sw_dec_clkgate_e : 1; // 1
@@ -65,7 +65,7 @@ struct H264dRkvRegs_t {
         unsigned int    sw_force_softreset_valid : 1; //21
         unsigned int    sw_softreset_rdy : 1; // 22
     } swreg1_int;
-    struct {// 55bit
+    struct {
         unsigned int    sw_in_endian : 1;
         unsigned int    sw_in_swap32_e : 1;
         unsigned int    sw_in_swap64_e : 1;
@@ -88,20 +88,22 @@ struct H264dRkvRegs_t {
         unsigned int    sw_h264_firstslice_flag : 1;
         unsigned int    sw_h264_frame_orslice : 1;
         unsigned int    sw_buspr_slot_disable : 1;
+        unsigned int    sw_colmv_mode : 1;
+        unsigned int    sw_ycacherd_prior : 1;
     } swreg2_sysctrl;
-    struct { //85bit
+    struct {
         unsigned int    sw_y_hor_virstride : 9;
         unsigned int    reserve : 2;
         unsigned int    sw_slice_num_highbit : 1;
         unsigned int    sw_uv_hor_virstride : 9;
         unsigned int    sw_slice_num_lowbits : 11;
-    } swreg3_picpar; // 107bit
+    } swreg3_picpar;
     struct {
         unsigned int    sw_strm_rlc_base;
-    } swreg4_strm_rlc_base; // 139bit
+    } swreg4_strm_rlc_base;
     struct {
         unsigned int sw_stream_len : 27;
-    } swreg5_stream_rlc_len; // 166
+    } swreg5_stream_rlc_len;
     struct {
         unsigned int    sw_cabactbl_base;
     } swreg6_cabactbl_prob_base;
@@ -219,6 +221,12 @@ struct H264dRkvRegs_t {
         unsigned int sw_h264_error_en_highbits : 30;
         unsigned int reserve : 2;
     } swreg77_h264_error_e;
+    struct {
+        unsigned int sw_colmv_base;
+    } swreg78_colmv_cur_base;
+    struct {
+        unsigned int sw_colmv_base;
+    } swreg79_94_colmv0_15_base[16];
     unsigned int slot_idx;
     unsigned int had_err_flag;
     unsigned int used_for_ref;

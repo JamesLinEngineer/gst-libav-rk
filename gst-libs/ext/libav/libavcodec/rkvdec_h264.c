@@ -35,7 +35,7 @@
 FILE* fp1=NULL;
 
 typedef struct _RKVDECH264Context RKVDECH264Context;
-typedef struct _RKVDECH264FrameData RKVDECH264FrameData;
+typedef struct _RKVDECH264FrameData RKVDEC_FrameData_H264, *LPRKVDEC_FrameData_H264;
 typedef struct H264dRkvRegs_t RKVDEC_H264_Regs, *LPRKVDEC_H264_Regs;
 typedef struct _RKVDEC_PicParams_H264 RKVDEC_PicParams_H264, *LPRKVDEC_PicParams_H264;
 typedef struct _RKVDEC_PicEntry_H264 RKVDEC_PicEntry_H264, *LPRKVDEC_PicEntry_H264;
@@ -44,24 +44,24 @@ typedef struct _RKVDECH264HwReq RKVDECH264HwReq;
 
 
 struct _RKVDECH264Context{
-     signed int vpu_socket;
-     LPRKVDEC_H264_Regs hw_regs;
-     LPRKVDEC_PicParams_H264 pic_param;
-     LPRKVDEC_ScalingList_H264 scaling_list;
-     AVFrame* syntax_data;
-     AVFrame* cabac_table_data;
-     AVFrame* scaling_list_data;
-     AVFrame* pps_data;
-     AVFrame* rps_data;
-     AVFrame* errorinfo_data;
-     AVFrame* stream_data;
-     AVFrame* frame_data;
-     os_allocator *allocator;
-     void *allocator_ctx;
+    signed int vpu_socket;
+    LPRKVDEC_H264_Regs hw_regs;
+    LPRKVDEC_PicParams_H264 pic_param;
+    LPRKVDEC_ScalingList_H264 scaling_list;
+    AVFrame* syntax_data;
+    AVFrame* cabac_table_data;
+    AVFrame* scaling_list_data;
+    AVFrame* pps_data;
+    AVFrame* rps_data;
+    AVFrame* errorinfo_data;
+    AVFrame* stream_data;
+    AVBufferPool *motion_val_pool;
+    os_allocator *allocator;
+    void *allocator_ctx;
 };
 
 struct _RKVDECH264FrameData{
-
+    AVFrame colmv;
 };
 
 struct _RKVDECH264HwReq {
@@ -84,6 +84,7 @@ struct _RKVDEC_PicParams_H264 {
     unsigned short  wFrameWidthInMbsMinus1;
     unsigned short  wFrameHeightInMbsMinus1;
     RKVDEC_PicEntry_H264  CurrPic; /* flag is bot field flag */
+    RKVDEC_PicEntry_H264  CurrMv;
     unsigned char   num_ref_frames;
 
     union {
@@ -113,6 +114,8 @@ struct _RKVDEC_PicParams_H264 {
     unsigned int  StatusReportFeedbackNumber;
 
     RKVDEC_PicEntry_H264  RefFrameList[16]; /* flag LT */
+    RKVDEC_PicEntry_H264  RefColmvList[16];
+
     int  CurrFieldOrderCnt[2];
     int  FieldOrderCntList[16][2];
 
@@ -204,6 +207,11 @@ static inline int ff_rkvdec_get_fd(AVFrame* frame)
     return frame->linesize[2];
 }
 
+static inline int ff_rkvdec_get_size(AVFrame* frame)
+{
+    return frame->linesize[0];
+}
+
 static int get_refpic_index(const LPRKVDEC_PicParams_H264 pp, int surface_index)
 {
     int i;
@@ -227,9 +235,10 @@ static void fill_picture_parameters(const H264Context *h, LPRKVDEC_PicParams_H26
     const PPS *pps = h->ps.pps;
     const SPS *sps = h->ps.sps;
     int i, j;
-
+    
     memset(pp, 0, sizeof(RKVDEC_PicParams_H264));
     fill_picture_entry(&pp->CurrPic, ff_rkvdec_get_fd(current_picture->f), h->picture_structure == PICT_BOTTOM_FIELD);
+    fill_picture_entry(&pp->CurrMv, ff_rkvdec_get_fd(current_picture->hwaccel_picture_private), 0);
 
     pp->UsedForReferenceFlags = 0;
     pp->NonExistingFrameFlags = 0;
@@ -247,6 +256,9 @@ static void fill_picture_parameters(const H264Context *h, LPRKVDEC_PicParams_H26
             fill_picture_entry(&pp->RefFrameList[i],
                                ff_rkvdec_get_fd(r->f),
                                r->long_ref != 0);
+            fill_picture_entry(&pp->RefColmvList[i],
+                               ff_rkvdec_get_fd(r->hwaccel_picture_private),
+                               0);
 
             if ((r->reference & PICT_TOP_FIELD) && r->field_poc[0] != INT_MAX)
                 pp->FieldOrderCntList[i][0] = r->field_poc[0];
@@ -631,6 +643,7 @@ static int rkvdec_h264_regs_gen_reg(AVCodecContext *avctx)
     hw_regs->swreg40_cur_poc.sw_cur_poc = pp->CurrFieldOrderCnt[0];
     hw_regs->swreg74_h264_cur_poc1.sw_h264_cur_poc1 = pp->CurrFieldOrderCnt[1];
     hw_regs->swreg7_decout_base.sw_decout_base = ff_rkvdec_get_fd(pic->f);
+    hw_regs->swreg78_colmv_cur_base.sw_colmv_base = ff_rkvdec_get_fd(pic->hwaccel_picture_private);
 
     for (i = 0; i < 15; i++) {
         hw_regs->swreg25_39_refer0_14_poc[i] = (i & 1) ? pp->FieldOrderCntList[i / 2][1] : pp->FieldOrderCntList[i / 2][0];
@@ -674,6 +687,20 @@ static int rkvdec_h264_regs_gen_reg(AVCodecContext *avctx)
     hw_regs->swreg43_rps_base.sw_rps_base = ff_rkvdec_get_fd(ctx->syntax_data) + ((ctx->rps_data->data[0] - ctx->syntax_data->data[0]) << 10);    
     hw_regs->swreg75_h264_errorinfo_base.sw_errorinfo_base = ff_rkvdec_get_fd(ctx->syntax_data) + ((ctx->errorinfo_data->data[0] - ctx->syntax_data->data[0]) << 10);
 
+    near_index = -1;
+    for (i = 0; i < 16; i++) {
+        if (pp->RefColmvList[i].bPicEntry != 0xff) {
+            ref_index  = pp->RefColmvList[i].Index7Bits;
+            near_index = pp->RefColmvList[i].Index7Bits;
+        } else {
+            ref_index = (near_index < 0) ? pp->CurrMv.Index7Bits : near_index;
+        }
+        hw_regs->swreg79_94_colmv0_15_base[i].sw_colmv_base = ref_index;
+    }
+
+    if (ctx->motion_val_pool && hw_regs->swreg78_colmv_cur_base.sw_colmv_base)
+        hw_regs->swreg2_sysctrl.sw_colmv_mode = 1;
+
     p_regs[64] = 0;
     p_regs[65] = 0;
     p_regs[66] = 0;
@@ -692,6 +719,53 @@ static int rkvdec_h264_regs_gen_reg(AVCodecContext *avctx)
     return 0;
 }
 
+static void rkvdec_h264_free_colmv(void* opaque, uint8_t *data)
+{
+    RKVDECH264Context * const ctx = opaque;
+    AVFrame* colmv = (AVFrame*)data;
+
+    av_log(NULL, AV_LOG_INFO, "RK_H264_DEC: rkvdec_h264_allocator_free_colmv size: %d", colmv->linesize[0]);
+    if (!ctx || !colmv)
+        return;
+    ctx->allocator->free(ctx->allocator_ctx, colmv);
+    av_freep(&colmv);
+}
+
+static AVBufferRef* rkvdec_h264_alloc_colmv(void* opaque, int size)
+{
+    RKVDECH264Context * const ctx = opaque;
+    AVFrame* colmv = av_frame_alloc();
+
+    av_log(NULL, AV_LOG_INFO, "RK_H264_DEC: rkvdec_h264_allocator_alloc_colmv size: %d", size);
+    colmv->linesize[0] = size;
+    ctx->allocator->alloc(ctx->allocator_ctx, colmv);
+    return av_buffer_create((uint8_t*)colmv, size, rkvdec_h264_free_colmv, ctx, 0);
+}
+
+static int fill_picture_colmv(const H264Context* h)
+{
+    RKVDECH264Context * const ctx = ff_rkvdec_get_context(h->avctx);
+    H264Picture *current_picture = h->cur_pic_ptr;
+    int enable_colmv = 0;
+
+    if (!enable_colmv && !ctx->motion_val_pool)
+        return 0;
+
+    const int b4_stride     = h->mb_width * 4 + 1;
+    const int b4_array_size = b4_stride * h->mb_height * 4;
+    const int colmv_size = 2 * 2 * (b4_array_size + 4) * sizeof(int16_t);
+
+    if (!ctx->motion_val_pool) {
+        ctx->motion_val_pool = av_buffer_pool_init2(colmv_size, ctx, rkvdec_h264_alloc_colmv, NULL);
+    }
+
+    if (current_picture->hwaccel_priv_buf)
+        av_buffer_unref(&current_picture->hwaccel_priv_buf);
+    current_picture->hwaccel_priv_buf = av_buffer_pool_get(ctx->motion_val_pool);
+    current_picture->hwaccel_picture_private = current_picture->hwaccel_priv_buf->data;
+
+    return 0;
+}
 
  /** Initialize and start decoding a frame with RKVDEC. */
 static int rkvdec_h264_start_frame(AVCodecContext          *avctx,
@@ -702,6 +776,7 @@ static int rkvdec_h264_start_frame(AVCodecContext          *avctx,
     H264Context * const h = avctx->priv_data;
     
     av_log(avctx, AV_LOG_INFO, "RK_H264_DEC: rkvdec_h264_start_frame\n");
+    fill_picture_colmv(h);
     fill_picture_parameters(h, ctx->pic_param);
     fill_scaling_lists(h, ctx->scaling_list);
     ctx->stream_data->pkt_size = 0;
@@ -732,7 +807,7 @@ static int rkvdec_h264_end_frame(AVCodecContext *avctx)
     rkvdec_h264_regs_gen_reg(avctx);
 
     req.req = (unsigned int*)ctx->hw_regs;
-    req.size = 78 * sizeof(unsigned int);
+    req.size = ctx->motion_val_pool ? 95 * sizeof(unsigned int) : 78 * sizeof(unsigned int);
 
     av_log(avctx, AV_LOG_INFO, "ioctl VPU_IOC_SET_REG start.");
     ret = ioctl(ctx->vpu_socket, VPU_IOC_SET_REG, &req);
@@ -853,6 +928,9 @@ static int rkvdec_h264_context_uninit(AVCodecContext *avctx)
     av_free(ctx->pic_param);
     av_free(ctx->scaling_list);
 
+    if (ctx->motion_val_pool)
+        av_buffer_pool_uninit(&ctx->motion_val_pool);
+
     if (ctx->vpu_socket > 0) {
         close(ctx->vpu_socket);
         ctx->vpu_socket = -1;
@@ -872,7 +950,7 @@ AVHWAccel ff_h264_rkvdec_hwaccel = {
     .init                 = rkvdec_h264_context_init,
     .uninit               = rkvdec_h264_context_uninit,
     .priv_data_size       = sizeof(RKVDECH264Context),
-    .frame_priv_data_size = sizeof(RKVDECH264FrameData),
+    .frame_priv_data_size = sizeof(RKVDEC_FrameData_H264),
 };
 
 
