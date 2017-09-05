@@ -42,28 +42,28 @@ struct H264dRkvRegs_t {
         unsigned int    prod_num : 16;
     } swreg0_id;
     struct {
-        unsigned int    sw_dec_e : 1;//0
-        unsigned int    sw_dec_clkgate_e : 1; // 1
-        unsigned int    reserve0 : 1;// 2
-        unsigned int    sw_timeout_mode : 1; // 3
-        unsigned int    sw_dec_irq_dis : 1;//4    // 4
-        unsigned int    sw_dec_timeout_e : 1; //5
-        unsigned int    sw_buf_empty_en : 1; // 6
-        unsigned int    sw_stmerror_waitdecfifo_empty : 1; // 7
-        unsigned int    sw_dec_irq : 1; // 8
-        unsigned int    sw_dec_irq_raw : 1; // 9
+        unsigned int    sw_dec_e : 1;
+        unsigned int    sw_dec_clkgate_e : 1;
+        unsigned int    reserve0 : 1;
+        unsigned int    sw_timeout_mode : 1;
+        unsigned int    sw_dec_irq_dis : 1;
+        unsigned int    sw_dec_timeout_e : 1;
+        unsigned int    sw_buf_empty_en : 1;
+        unsigned int    sw_stmerror_waitdecfifo_empty : 1;
+        unsigned int    sw_dec_irq : 1;
+        unsigned int    sw_dec_irq_raw : 1;
         unsigned int    reserve2 : 2;
-        unsigned int    sw_dec_rdy_sta : 1; //12
-        unsigned int    sw_dec_bus_sta : 1; //13
-        unsigned int    sw_dec_error_sta : 1; // 14
-        unsigned int    sw_dec_timeout_sta : 1; //15
-        unsigned int    sw_dec_empty_sta : 1; // 16
-        unsigned int    sw_colmv_ref_error_sta : 1; // 17
-        unsigned int    sw_cabu_end_sta : 1; // 18
-        unsigned int    sw_h264orvp9_error_mode : 1; //19
-        unsigned int    sw_softrst_en_p : 1; //20
-        unsigned int    sw_force_softreset_valid : 1; //21
-        unsigned int    sw_softreset_rdy : 1; // 22
+        unsigned int    sw_dec_rdy_sta : 1;
+        unsigned int    sw_dec_bus_sta : 1;
+        unsigned int    sw_dec_error_sta : 1;
+        unsigned int    sw_dec_timeout_sta : 1;
+        unsigned int    sw_dec_empty_sta : 1;
+        unsigned int    sw_colmv_ref_error_sta : 1;
+        unsigned int    sw_cabu_end_sta : 1;
+        unsigned int    sw_h264orvp9_error_mode : 1;
+        unsigned int    sw_softrst_en_p : 1;
+        unsigned int    sw_force_softreset_valid : 1;
+        unsigned int    sw_softreset_rdy : 1;
     } swreg1_int;
     struct {
         unsigned int    sw_in_endian : 1;
