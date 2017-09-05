@@ -32,14 +32,11 @@ static const char *name_rkvdec = "/dev/rkvdec";
 
 
 struct H265d_REGS_t{
-    // 0bit
     struct swreg_id {
         unsigned int    minor_ver           : 8  ;
         unsigned int    major_ver           : 8  ;
         unsigned int    prod_num            : 16 ;
-    } sw_id;
-    
-    // 32bit
+    } sw_id; //0
     struct swreg_int {
         unsigned int    sw_dec_e            : 1  ;
         unsigned int    sw_dec_clkgate_e    : 1  ;
@@ -62,8 +59,7 @@ struct H265d_REGS_t{
         unsigned int    sw_wr_ddr_align_en  : 1;
         unsigned int    sw_scl_down_en      : 1;
         unsigned int    sw_allow_not_wr_unref_bframe : 1;
-    } sw_interrupt;
-    // 58bit
+    } sw_interrupt; // 1
     struct swreg_sysctrl {
         unsigned int    sw_in_endian        : 1  ;
         unsigned int    sw_in_swap32_e      : 1  ;
@@ -74,21 +70,21 @@ struct H265d_REGS_t{
         unsigned int    sw_out_endian       : 1  ;
         unsigned int    sw_out_swap32_e     : 1  ;
         unsigned int    sw_out_cbcr_swap    : 1  ;
-        unsigned int    reserve             : 1  ;
+        unsigned int    reserve1            : 1  ;
         unsigned int    sw_rlc_mode_direct_write : 1;
         unsigned int    sw_rlc_mode         : 1  ;
         unsigned int    sw_strm_start_bit   : 7  ;
-    } sw_sysctrl; 
-    // 77bit
+        unsigned int    reserve2            : 11 ;
+        unsigned int    sw_colmv_mode       : 1  ;
+        unsigned int    sw_ycacherd_prior   : 1  ;
+    } sw_sysctrl;  // 2
     struct swreg_pic {
         unsigned int    sw_y_hor_virstride  : 9 ;
         unsigned int    reserve             : 3 ;
         unsigned int    sw_uv_hor_virstride : 9 ;
         unsigned int    sw_slice_num        : 8 ;
-    } sw_picparameter;
-    // 106bit
+    } sw_picparameter; // 3
     unsigned int        sw_strm_rlc_base        ;
-    // 138bit
     unsigned int        sw_stream_len           ;
     unsigned int        sw_cabactbl_base        ;
     unsigned int        sw_decout_base          ;
@@ -99,7 +95,7 @@ struct H265d_REGS_t{
     signed int          sw_cur_poc              ;
     unsigned int        sw_rlcwrite_base        ;
     unsigned int        sw_pps_base             ;
-    unsigned int        sw_rps_base             ;
+    unsigned int        sw_rps_base             ; // 43
     unsigned int        cabac_error_en          ;
     unsigned int        cabac_error_status      ;
 
@@ -108,25 +104,31 @@ struct H265d_REGS_t{
         unsigned int   sw_cabac_error_ctu_yoffset    : 8;
         unsigned int   sw_streamfifo_space2full      : 7;
         unsigned int   reversed0                     : 9;
-    } cabac_error_ctu;
+    } cabac_error_ctu; // 46
 
     struct sao_ctu_position     {
         unsigned int   sw_saowr_xoffset              : 9;
         unsigned int   reversed0                     : 7;
         unsigned int   sw_saowr_yoffset             : 10;
         unsigned int   reversed1                     : 6;
-    } sao_ctu_position;
+    } sao_ctu_position; // 47
 
-    unsigned int        sw_ref_valid            ;   //this is not same with hardware
+    unsigned int        sw_ref_valid; // 48
     unsigned int        sw_refframe_index[15];
 
-    unsigned int        performance_cycle;
+    unsigned int        performance_cycle; // 64
     unsigned int        axi_ddr_rdata;
     unsigned int        axi_ddr_wdata;
-    unsigned int        fpgadebug_reset;
-    unsigned int        reserve[9];
+    unsigned int        fpgadebug_reset; // 67
+    unsigned int        reserve0[9];
 
-    unsigned int extern_error_en;
+    unsigned int        extern_error_en;
+    struct {
+        unsigned int sw_colmv_base;
+    } swreg78_colmv_cur_base;
+    struct {
+        unsigned int sw_colmv_base;
+    } swreg79_94_colmv0_15_base[16];
 
 };
 

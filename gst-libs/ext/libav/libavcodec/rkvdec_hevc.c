@@ -67,7 +67,7 @@ struct _RKVDECHevcContext{
      AVFrame* pps_data;
      AVFrame* rps_data;
      AVFrame* stream_data;
-     AVFrame* frame_data;
+     AVBufferPool *motion_val_pool;
      os_allocator *allocator;
      void *allocator_ctx;
 };
@@ -78,7 +78,7 @@ struct _RKVDECHevcHwReq {
 } ;
 
 struct _RKVDECHevcFrameData{
-
+    AVFrame colmv;
 };
 
 /* HEVC Picture Entry structure */
@@ -110,6 +110,7 @@ struct _RKVDEC_PicParams_HEVC {
         unsigned short wFormatAndSequenceInfoFlags;
     };
     RKVDEC_PicEntry_HEVC  CurrPic;
+    RKVDEC_PicEntry_HEVC  CurrMv;
     unsigned char   sps_max_dec_pic_buffering_minus1;
     unsigned char   log2_min_luma_coding_block_size_minus3;
     unsigned char   log2_diff_max_min_luma_coding_block_size;
@@ -187,6 +188,7 @@ struct _RKVDEC_PicParams_HEVC {
     unsigned char   log2_parallel_merge_level_minus2;
     signed int      CurrPicOrderCntVal;
     RKVDEC_PicEntry_HEVC  RefPicList[15];
+    RKVDEC_PicEntry_HEVC  RefColmvList[16];
     unsigned char   ReservedBits5;
     signed int      PicOrderCntValList[15];
     unsigned char   RefPicSetStCurrBefore[8];
@@ -281,6 +283,7 @@ static void fill_picture_parameters(const HEVCContext *h, LPRKVDEC_PicParams_HEV
                                       (0                                  << 15);
 
     fill_picture_entry(&pp->CurrPic, ff_rkvdec_get_fd(current_picture->frame), 0);
+    fill_picture_entry(&pp->CurrMv, ff_rkvdec_get_fd(current_picture->hwaccel_picture_private), 0);
     
     pp->sps_max_dec_pic_buffering_minus1         = sps->temporal_layer[sps->max_sub_layers - 1].max_dec_pic_buffering - 1;
     pp->log2_min_luma_coding_block_size_minus3   = sps->log2_min_cb_size - 3;
@@ -392,9 +395,11 @@ static void fill_picture_parameters(const HEVCContext *h, LPRKVDEC_PicParams_HEV
 
         if (frame && ff_rkvdec_get_fd(frame->frame)) {
             fill_picture_entry(&pp->RefPicList[i], ff_rkvdec_get_fd(frame->frame), !!(frame->flags & HEVC_FRAME_FLAG_LONG_REF));
+            fill_picture_entry(&pp->RefColmvList[i], ff_rkvdec_get_fd(frame->hwaccel_picture_private), 0);
             pp->PicOrderCntValList[i] = frame->poc;
         } else {
             pp->RefPicList[i].bPicEntry = 0xff;
+            pp->RefColmvList[i].bPicEntry = 0xff;
             pp->PicOrderCntValList[i]   = 0;
         }
     }
@@ -1144,6 +1149,7 @@ static int rkvdec_hevc_regs_gen_reg(AVCodecContext *avctx)
     hw_regs->sw_yuv_virstride = virstrid_yuv >> 4;
 
     hw_regs->sw_decout_base = pp->CurrPic.Index7Bits;
+    hw_regs->swreg78_colmv_cur_base.sw_colmv_base = pp->CurrMv.Index7Bits;
     hw_regs->sw_cur_poc = pp->CurrPicOrderCntVal;
 
     hw_regs->sw_cabactbl_base = ff_rkvdec_get_fd(ctx->cabac_table_data);
@@ -1184,10 +1190,22 @@ static int rkvdec_hevc_regs_gen_reg(AVCodecContext *avctx)
         }
     }
 
+    valid_ref = hw_regs->swreg78_colmv_cur_base.sw_colmv_base;
+    for (i = 0; i < 16; i++) {
+        if (pp->RefColmvList[i].bPicEntry != 0xff) {
+            hw_regs->swreg79_94_colmv0_15_base[i].sw_colmv_base = valid_ref = pp->RefColmvList[i].Index7Bits;
+        } else {
+            hw_regs->swreg79_94_colmv0_15_base[i].sw_colmv_base = valid_ref;
+        }
+    }
+
     hw_regs->sw_refer_base[0] |= ((hw_regs->sw_ref_valid & 0xf) << 10);
     hw_regs->sw_refer_base[1] |= (((hw_regs->sw_ref_valid >> 4) & 0xf) << 10);
     hw_regs->sw_refer_base[2] |= (((hw_regs->sw_ref_valid >> 8) & 0xf) << 10);
     hw_regs->sw_refer_base[3] |= (((hw_regs->sw_ref_valid >> 12) & 0x7) << 10);
+
+    if (ctx->motion_val_pool && hw_regs->swreg78_colmv_cur_base.sw_colmv_base)
+        hw_regs->sw_sysctrl.sw_colmv_mode = 1;
 
 #ifdef debug_regs
     unsigned char *p = hw_regs;
@@ -1200,6 +1218,54 @@ static int rkvdec_hevc_regs_gen_reg(AVCodecContext *avctx)
     return 0;
 }
 
+static void rkvdec_h265_free_colmv(void* opaque, uint8_t *data)
+{
+    RKVDECHevcContext * const ctx = opaque;
+    AVFrame* colmv = (AVFrame*)data;
+
+    av_log(NULL, AV_LOG_INFO, "RK_HEVC_DEC: rkvdec_h265_allocator_free_colmv size: %d", colmv->linesize[0]);
+    if (!ctx || !colmv)
+        return;
+    ctx->allocator->free(ctx->allocator_ctx, colmv);
+    av_freep(&colmv);
+}
+
+static AVBufferRef* rkvdec_h265_alloc_colmv(void* opaque, int size)
+{
+    RKVDECHevcContext * const ctx = opaque;
+    AVFrame* colmv = av_frame_alloc();
+
+    av_log(NULL, AV_LOG_INFO, "RK_H264_DEC: rkvdec_h265_allocator_alloc_colmv size: %d", size);
+    colmv->linesize[0] = size;
+    ctx->allocator->alloc(ctx->allocator_ctx, colmv);
+    return av_buffer_create((uint8_t*)colmv, size, rkvdec_h265_free_colmv, ctx, 0);
+}
+
+static int fill_picture_colmv(const HEVCContext* h)
+{
+    RKVDECHevcContext* const ctx = ff_rkvdec_get_context(h->avctx);
+    HEVCFrame* current_picture = h->ref;
+
+    int enable_colmv = 0;
+
+    if (!enable_colmv && !ctx->motion_val_pool)
+     return 0;
+
+    const int colmv_size = (current_picture->frame->width * current_picture->frame->height * 3 / 2) / 16;
+
+    if (!ctx->motion_val_pool) {
+        ctx->motion_val_pool = av_buffer_pool_init2(colmv_size, ctx, rkvdec_h265_alloc_colmv, NULL);
+    }
+
+    if (current_picture->hwaccel_priv_buf)
+        av_buffer_unref(&current_picture->hwaccel_priv_buf);
+    current_picture->hwaccel_priv_buf = av_buffer_pool_get(ctx->motion_val_pool);
+    current_picture->hwaccel_picture_private = current_picture->hwaccel_priv_buf->data;
+
+    return 0;
+}
+
+
  /** Initialize and start decoding a frame with RKVDEC. */
 static int rkvdec_hevc_start_frame(AVCodecContext          *avctx,
                                   av_unused const uint8_t *buffer,
@@ -1209,6 +1275,7 @@ static int rkvdec_hevc_start_frame(AVCodecContext          *avctx,
     RKVDECHevcContext * const ctx = ff_rkvdec_get_context(avctx);
 
     av_log(avctx, AV_LOG_INFO, "RK_HEVC_DEC: rkvdec_hevc_start_frame\n");
+    fill_picture_colmv(h);
     fill_picture_parameters(h, ctx->pic_param);
     fill_scaling_lists(h, ctx->scaling_list, ctx->scaling_rk);
 
@@ -1231,7 +1298,7 @@ static int rkvdec_hevc_end_frame(AVCodecContext *avctx)
     rkvdec_hevc_regs_gen_reg(avctx); 
 
     req.req = (unsigned int*)ctx->hw_regs;
-    req.size = 78 * sizeof(unsigned int);
+    req.size = ctx->motion_val_pool ? 95 * sizeof(unsigned int) : 78 * sizeof(unsigned int);
 
     av_log(avctx, AV_LOG_INFO, "ioctl VPU_IOC_SET_REG start.");
     ret = ioctl(ctx->vpu_socket, VPU_IOC_SET_REG, &req);
@@ -1351,6 +1418,9 @@ static int rkvdec_hevc_context_uninit(AVCodecContext *avctx)
     av_free(ctx->scaling_rk);
     av_free(ctx->hw_regs);
     av_free(ctx->rps_info);
+
+    if (ctx->motion_val_pool)
+        av_buffer_pool_uninit(&ctx->motion_val_pool);
 
     if (ctx->vpu_socket > 0) {
         close(ctx->vpu_socket);
