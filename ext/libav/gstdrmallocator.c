@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <fcntl.h>
 #include <unistd.h>
 
 /* it needs to be below because is internal to libdrm */
@@ -502,11 +503,23 @@ gst_drm_allocator_init (GstDRMAllocator * allocator)
   GST_OBJECT_FLAG_SET (allocator, GST_ALLOCATOR_FLAG_CUSTOM_ALLOC);
 }
 
+#define ASSUME_DRM_DEVICE "/dev/dri/card0"
 GstAllocator *
 gst_drm_allocator_new (int fd)
 {
-  if (fd == 0)
-    fd = drmOpen ("rockchip", NULL);
+  static const char *drivers[] = {"rockchip"};
+  int i;
+
+  if (fd <= 0) {
+    for (i = 0; i < G_N_ELEMENTS (drivers); i++) {
+      fd = drmOpen (drivers[i], NULL);
+      if (fd >= 0) {
+        break;
+      }
+    }
+    if (fd < 0)
+      fd = open(ASSUME_DRM_DEVICE, O_RDWR, 0);
+  }
 
   return g_object_new (GST_TYPE_DRM_ALLOCATOR, "name",
       "DRMMemory::allocator", "drm-fd", fd, NULL);
