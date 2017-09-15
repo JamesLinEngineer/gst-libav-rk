@@ -189,7 +189,7 @@ static attribute_align_arg void *frame_worker_thread(void *arg)
 
         /* if the previous thread uses hwaccel then we take the lock to ensure
          * the threads don't run concurrently */
-        if (avctx->hwaccel) {
+        if (avctx->hwaccel && !(avctx->hwaccel->caps_internal & HWACCEL_CAP_THREAD_SAFE)) {
             pthread_mutex_lock(&p->parent->hwaccel_mutex);
             p->hwaccel_serializing = 1;
         }

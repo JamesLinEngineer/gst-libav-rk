@@ -25,6 +25,7 @@
 #include "allocator_drm.h"
 #include "put_bits64.h"
 #include "libavutil/time.h"
+#include "hwaccel.h"
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -58,6 +59,7 @@ struct _RKVDECH264Context{
     AVBufferPool *motion_val_pool;
     os_allocator *allocator;
     void *allocator_ctx;
+    pthread_mutex_t hwaccel_mutex;
 };
 
 struct _RKVDECH264FrameData{
@@ -719,27 +721,27 @@ static int rkvdec_h264_regs_gen_reg(AVCodecContext *avctx)
     return 0;
 }
 
-static void rkvdec_h264_free_colmv(void* opaque, uint8_t *data)
+static void rkvdec_h264_free_dmabuffer(void* opaque, uint8_t *data)
 {
     RKVDECH264Context * const ctx = opaque;
-    AVFrame* colmv = (AVFrame*)data;
+    AVFrame* buf = (AVFrame*)data;
 
-    av_log(NULL, AV_LOG_INFO, "RK_H264_DEC: rkvdec_h264_allocator_free_colmv size: %d", colmv->linesize[0]);
-    if (!ctx || !colmv)
+    av_log(NULL, AV_LOG_INFO, "RK_H264_DEC: rkvdec_h264_free_dmabuffer size: %d", buf->linesize[0]);
+    if (!ctx || !buf)
         return;
-    ctx->allocator->free(ctx->allocator_ctx, colmv);
-    av_freep(&colmv);
+    ctx->allocator->free(ctx->allocator_ctx, buf);
+    av_freep(&buf);
 }
 
-static AVBufferRef* rkvdec_h264_alloc_colmv(void* opaque, int size)
+static AVBufferRef* rkvdec_h264_alloc_dmabuffer(void* opaque, int size)
 {
     RKVDECH264Context * const ctx = opaque;
-    AVFrame* colmv = av_frame_alloc();
+    AVFrame* buf = av_frame_alloc();
 
-    av_log(NULL, AV_LOG_INFO, "RK_H264_DEC: rkvdec_h264_allocator_alloc_colmv size: %d", size);
-    colmv->linesize[0] = size;
-    ctx->allocator->alloc(ctx->allocator_ctx, colmv);
-    return av_buffer_create((uint8_t*)colmv, size, rkvdec_h264_free_colmv, ctx, 0);
+    av_log(NULL, AV_LOG_INFO, "RK_H264_DEC: rkvdec_h264_alloc_dmabuffer size: %d", size);
+    buf->linesize[0] = size;
+    ctx->allocator->alloc(ctx->allocator_ctx, buf);
+    return av_buffer_create((uint8_t*)buf, size, rkvdec_h264_free_dmabuffer, ctx, 0);
 }
 
 static int fill_picture_colmv(const H264Context* h)
@@ -756,13 +758,14 @@ static int fill_picture_colmv(const H264Context* h)
     const int colmv_size = 2 * 2 * (b4_array_size + 4) * sizeof(int16_t);
 
     if (!ctx->motion_val_pool) {
-        ctx->motion_val_pool = av_buffer_pool_init2(colmv_size, ctx, rkvdec_h264_alloc_colmv, NULL);
+        ctx->motion_val_pool = av_buffer_pool_init2(colmv_size, ctx, rkvdec_h264_alloc_dmabuffer, NULL);
     }
 
-    if (current_picture->hwaccel_priv_buf)
-        av_buffer_unref(&current_picture->hwaccel_priv_buf);
+    AVBufferRef* prev_ref = current_picture->hwaccel_priv_buf;
     current_picture->hwaccel_priv_buf = av_buffer_pool_get(ctx->motion_val_pool);
     current_picture->hwaccel_picture_private = current_picture->hwaccel_priv_buf->data;
+    if (prev_ref)
+        av_buffer_unref(&prev_ref);
 
     return 0;
 }
@@ -774,8 +777,9 @@ static int rkvdec_h264_start_frame(AVCodecContext          *avctx,
 {
     RKVDECH264Context * const ctx = ff_rkvdec_get_context(avctx);
     H264Context * const h = avctx->priv_data;
-    
+
     av_log(avctx, AV_LOG_INFO, "RK_H264_DEC: rkvdec_h264_start_frame\n");
+    pthread_mutex_lock(&ctx->hwaccel_mutex);
     fill_picture_colmv(h);
     fill_picture_parameters(h, ctx->pic_param);
     fill_scaling_lists(h, ctx->scaling_list);
@@ -809,6 +813,11 @@ static int rkvdec_h264_end_frame(AVCodecContext *avctx)
     req.req = (unsigned int*)ctx->hw_regs;
     req.size = ctx->motion_val_pool ? 95 * sizeof(unsigned int) : 78 * sizeof(unsigned int);
 
+    if (avctx->active_thread_type & FF_THREAD_FRAME) {
+        ff_thread_finish_setup(avctx);
+        h->setup_finished = 1;
+    }
+
     av_log(avctx, AV_LOG_INFO, "ioctl VPU_IOC_SET_REG start.");
     ret = ioctl(ctx->vpu_socket, VPU_IOC_SET_REG, &req);
     if (ret)
@@ -817,6 +826,8 @@ static int rkvdec_h264_end_frame(AVCodecContext *avctx)
     av_log(avctx, AV_LOG_INFO, "ioctl VPU_IOC_GET_REG start.");
     ret = ioctl(ctx->vpu_socket, VPU_IOC_GET_REG, &req);
     av_log(avctx, AV_LOG_INFO, "ioctl VPU_IOC_GET_REG success.");
+
+    pthread_mutex_unlock(&ctx->hwaccel_mutex);
 
     if (ret)
         av_log(avctx, AV_LOG_ERROR, "ioctl VPU_IOC_GET_REG failed ret %d\n", ret);
@@ -892,9 +903,11 @@ static int rkvdec_h264_context_init(AVCodecContext *avctx)
     ctx->stream_data->linesize[0] = RKVDECH264_DATA_SIZE;
     ctx->allocator->alloc(ctx->allocator_ctx, ctx->stream_data);
 
+    pthread_mutex_init(&ctx->hwaccel_mutex, NULL);
+
     if (ctx->vpu_socket <= 0) 
         ctx->vpu_socket = open(name_rkvdec, O_RDWR);
-    
+
     if (ctx->vpu_socket < 0) {
         av_log(avctx, AV_LOG_ERROR, "failed to open rkvdec.");
         return -1;
@@ -935,7 +948,8 @@ static int rkvdec_h264_context_uninit(AVCodecContext *avctx)
         close(ctx->vpu_socket);
         ctx->vpu_socket = -1;
     }
-    
+
+    pthread_mutex_destroy(&ctx->hwaccel_mutex);
     return 0;
 }
 
@@ -951,6 +965,6 @@ AVHWAccel ff_h264_rkvdec_hwaccel = {
     .uninit               = rkvdec_h264_context_uninit,
     .priv_data_size       = sizeof(RKVDECH264Context),
     .frame_priv_data_size = sizeof(RKVDEC_FrameData_H264),
+    .caps_internal        = HWACCEL_CAP_ASYNC_SAFE | HWACCEL_CAP_THREAD_SAFE,
 };
-
 
