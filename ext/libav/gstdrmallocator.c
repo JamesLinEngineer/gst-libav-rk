@@ -154,6 +154,9 @@ gst_drm_bpp_from_drm (guint32 drmfmt)
     case DRM_FORMAT_NV16:
       bpp = 8;
       break;
+    case DRM_FORMAT_NV12_10:
+      bpp = 10;
+      break;
     case DRM_FORMAT_UYVY:
     case DRM_FORMAT_YUYV:
     case DRM_FORMAT_YVYU:
@@ -181,8 +184,10 @@ gst_drm_height_from_drm (guint32 drmfmt, guint32 height)
       break;
     case DRM_FORMAT_NV16:
     case DRM_FORMAT_NV12:
-    case DRM_FORMAT_NV12_10:
       ret = height * 2;
+      break;
+    case DRM_FORMAT_NV12_10:
+      ret = (height * 10 / 8) * 2;
       break;
     default:
       ret = height;
@@ -303,7 +308,7 @@ gst_drm_allocator_alloc (GstAllocator * allocator, GstVideoInfo * vinfo)
     goto create_failed;
 
   drmmem->dma_fd = dph.fd;
-  GST_DEBUG_OBJECT(alloc, "Alloc drm mem object: dmafd:%d vaddr:%p", drmmem->dma_fd, drmmem->bo->ptr);
+  GST_DEBUG_OBJECT(alloc, "Alloc drm mem object: dmafd:%d vaddr:%p size:%d height:%d", drmmem->dma_fd, drmmem->bo->ptr, drmmem->bo->size, arg.height);
 
   /* bind frame buffer */
   for (i = 0; i < num_planes; i++)
@@ -314,8 +319,14 @@ gst_drm_allocator_alloc (GstAllocator * allocator, GstVideoInfo * vinfo)
   for (i = 0; i < num_planes; i++) {
     offsets[i] = GST_VIDEO_INFO_PLANE_OFFSET(vinfo, i);
     if (pitch)
-      GST_VIDEO_INFO_PLANE_STRIDE (vinfo, i) = pitch;    
+      GST_VIDEO_INFO_PLANE_STRIDE (vinfo, i) = pitch;
     pitches[i] = GST_VIDEO_INFO_PLANE_STRIDE (vinfo, i);
+  }
+
+  if (fmt == DRM_FORMAT_NV12_10 && num_planes >= 2) {
+    pitches[0] = pitches[1] = GST_ROUND_UP_N(w * 10 / 8, 256);
+    offsets[0] = 0;
+    offsets[1] = pitches[0] * h;
   }
 
   ret = drmModeAddFB2 (alloc->priv->device_fd, w, h, fmt, bo_handles, pitches,
