@@ -1461,3 +1461,18 @@ AVHWAccel ff_hevc_rkvdec_hwaccel = {
     .caps_internal        = HWACCEL_CAP_ASYNC_SAFE | HWACCEL_CAP_THREAD_SAFE,
 };
 
+AVHWAccel ff_hevc_rkvdec10_hwaccel = {
+    .name                 = "hevc_rkvdec10",
+    .type                 = AVMEDIA_TYPE_VIDEO,
+    .id                   = AV_CODEC_ID_HEVC,
+    .pix_fmt              = AV_PIX_FMT_P010LE,
+    .start_frame          = rkvdec_hevc_start_frame,
+    .end_frame            = rkvdec_hevc_end_frame,
+    .decode_slice         = rkvdec_hevc_decode_slice,
+    .init                 = rkvdec_hevc_context_init,
+    .uninit               = rkvdec_hevc_context_uninit,
+    .priv_data_size       = sizeof(RKVDECHevcContext),
+    .frame_priv_data_size = sizeof(RKVDECHevcFrameData),
+    .caps_internal        = HWACCEL_CAP_ASYNC_SAFE | HWACCEL_CAP_THREAD_SAFE,
+};
+

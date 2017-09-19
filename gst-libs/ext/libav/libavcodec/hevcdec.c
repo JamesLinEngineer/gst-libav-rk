@@ -397,7 +397,7 @@ static int set_sps(HEVCContext *s, const HEVCSPS *sps, enum AVPixelFormat pix_fm
         *fmt++ = AV_PIX_FMT_VAAPI;
 #endif
 #if CONFIG_HEVC_RKVDEC_HWACCEL
-	*fmt++ = AV_PIX_FMT_NV12;
+        *fmt++ = AV_PIX_FMT_P010LE;
 #endif
         break;
     }
