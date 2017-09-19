@@ -59,6 +59,7 @@ typedef struct _RKVDECHevcHwReq RKVDECHevcHwReq;
 
 struct _RKVDECHevcContext{
      signed int vpu_socket;
+     int slice_count;
      LPRKVDEC_HEVC_Regs hw_regs;
      LPRKVDEC_PicParams_HEVC pic_param;
      LPRKVDEC_ScalingList_HEVC scaling_list;
@@ -879,6 +880,7 @@ static void fill_stream_data(AVCodecContext* avctx, const uint8_t  *buffer, uint
     offset += sizeof(start_code);
     memcpy(data_ptr + offset, buffer, size);
     ctx->stream_data->pkt_size += (size + sizeof(start_code));
+    ctx->slice_count++;
 
     av_log(avctx, AV_LOG_INFO, "fill_stream_data pkg_size %d size %d", ctx->stream_data->pkt_size, size);
 }
@@ -1144,8 +1146,7 @@ static int rkvdec_hevc_regs_gen_reg(AVCodecContext *avctx)
                        & (~2047)) | 2048) >> 3);
     virstrid_y    = stride_y * height;
     virstrid_yuv  = virstrid_y + stride_uv * height / 2;
-
-    hw_regs->sw_picparameter.sw_slice_num = 1;
+    hw_regs->sw_picparameter.sw_slice_num = ctx->slice_count;
     hw_regs->sw_picparameter.sw_y_hor_virstride = stride_y >> 4;
     hw_regs->sw_picparameter.sw_uv_hor_virstride = stride_uv >> 4;
     hw_regs->sw_y_virstride = virstrid_y >> 4;
@@ -1285,6 +1286,7 @@ static int rkvdec_hevc_start_frame(AVCodecContext          *avctx,
 
     memset(ctx->rps_info, 0, sizeof(RKVDEC_Slice_RPS_Info));
     ctx->stream_data->pkt_size = 0;
+    ctx->slice_count = 0;
 
     return 0;   
 }
