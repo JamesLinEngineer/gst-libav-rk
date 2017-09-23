@@ -136,11 +136,17 @@ static int update_size(AVCodecContext *avctx, int w, int h)
 #if CONFIG_VP9_VAAPI_HWACCEL
             *fmtp++ = AV_PIX_FMT_VAAPI;
 #endif
+#if CONFIG_H264_RKVDEC_HWACCEL
+            *fmtp++ = AV_PIX_FMT_NV12;
+#endif
             break;
         case AV_PIX_FMT_YUV420P10:
         case AV_PIX_FMT_YUV420P12:
 #if CONFIG_VP9_VAAPI_HWACCEL
             *fmtp++ = AV_PIX_FMT_VAAPI;
+#endif
+#if CONFIG_H264_RKVDEC_HWACCEL
+            *fmtp++ = AV_PIX_FMT_NV12;
 #endif
             break;
         }
@@ -590,6 +596,11 @@ static int decode_frame_header(AVCodecContext *avctx,
                 s->s.h.segmentation.feat[i].skip_enabled = get_bits1(&s->gb);
             }
         }
+    }else {
+        s->s.h.segmentation.feat[0].q_enabled    = 0;
+        s->s.h.segmentation.feat[0].lf_enabled   = 0;
+        s->s.h.segmentation.feat[0].skip_enabled = 0;
+        s->s.h.segmentation.feat[0].ref_enabled  = 0;
     }
 
     // set qmul[] based on Y/UV, AC/DC and segmentation Q idx deltas
@@ -683,7 +694,12 @@ static int decode_frame_header(AVCodecContext *avctx,
                        av_get_pix_fmt_name(avctx->pix_fmt));
                 return AVERROR_INVALIDDATA;
             } else if (refw == w && refh == h) {
-                s->mvscale[i][0] = s->mvscale[i][1] = 0;
+            	if (avctx->hwaccel) {
+            		s->mvscale[i][0] = (refw << 14) / w;
+                	s->mvscale[i][1] = (refh << 14) / h;
+            	}else{
+                	s->mvscale[i][0] = s->mvscale[i][1] = 0;
+            	}
             } else {
                 if (w * 2 < refw || h * 2 < refh || w > 16 * refw || h > 16 * refh) {
                     av_log(avctx, AV_LOG_ERROR,
@@ -1096,6 +1112,73 @@ static av_cold int vp9_decode_free(AVCodecContext *avctx)
     return 0;
 }
 
+typedef struct VP9ParseContext {
+    int n_frames; // 1-8
+    int size[8];
+    int64_t pts;
+} VP9ParseContext;
+
+static int hwaccel_vp9_parse(VP9ParseContext *ctx,
+                 AVCodecContext *avctx,
+                 const uint8_t *data, int size)
+{
+    VP9ParseContext *s = ctx;
+    int marker;
+	int off_size = 0;
+
+    if (size <= 0) {
+        return 0;
+    }
+    if (s->n_frames >= 0) {
+		return 0;
+    }
+    marker = data[size - 1];
+    if ((marker & 0xe0) == 0xc0) {
+        int nbytes = 1 + ((marker >> 3) & 0x3);
+        int n_frames = 1 + (marker & 0x7), idx_sz = 2 + n_frames * nbytes;
+		av_log(avctx, AV_LOG_INFO, "vp9_parse n_frames = %d",n_frames);
+
+        if (size >= idx_sz && data[size - idx_sz] == marker) {
+            const uint8_t *idx = data + size + 1 - idx_sz;
+            int first = 1;
+
+            switch (nbytes) {
+#define case_n(a, rd) \
+            case a: \
+                while (n_frames--) { \
+                    unsigned sz = rd; \
+                    av_log(avctx, AV_LOG_INFO, "vp9_parse sz = %d",sz); \
+                    idx += a; \
+                    if (sz == 0 || sz > size) { \
+                        s->n_frames = 0; \
+                        av_log(avctx, AV_LOG_ERROR, \
+                               "Invalid superframe packet size: %u frame size: %d\n", \
+                               sz, size); \
+                        return off_size; \
+                    } \
+                    if (first) { \
+                        first = 0; \
+                        s->n_frames = n_frames; \
+                        s->size[n_frames] = sz; \
+                    } else { \
+                        s->size[n_frames] = sz; \
+                    } \
+                    data += sz; \
+                    size -= sz; \
+                } \
+                return off_size
+
+                case_n(1, *idx);
+                case_n(2, AV_RL16(idx));
+                case_n(3, AV_RL24(idx));
+                case_n(4, AV_RL32(idx));
+            }
+        }
+    }
+
+	
+    return off_size;
+}
 
 static int vp9_decode_frame(AVCodecContext *avctx, void *frame,
                             int *got_frame, AVPacket *pkt)
@@ -1110,6 +1193,22 @@ static int vp9_decode_frame(AVCodecContext *avctx, void *frame,
     AVFrame *f;
     int bytesperpixel;
 
+	struct VP9ParseContext mVP9ParseContext = {.n_frames = -1,
+												.size = {0}};
+
+	if (avctx->hwaccel) {
+	again:
+		hwaccel_vp9_parse(&mVP9ParseContext, avctx, data, size);
+		if(mVP9ParseContext.n_frames >= 0)
+		{
+			av_log(avctx, AV_LOG_INFO, "mVP9ParseContext.n_frames = %d", mVP9ParseContext.n_frames);
+			av_log(avctx, AV_LOG_INFO, "mVP9ParseContext.size[1] = %d", mVP9ParseContext.size[mVP9ParseContext.n_frames+1]);
+			av_log(avctx, AV_LOG_INFO, "mVP9ParseContext.size[0] = %d", mVP9ParseContext.size[mVP9ParseContext.n_frames]);
+			data += mVP9ParseContext.size[mVP9ParseContext.n_frames+1];
+			size = mVP9ParseContext.size[mVP9ParseContext.n_frames];
+			mVP9ParseContext.n_frames--;
+		}
+	}
     if ((ret = decode_frame_header(avctx, data, size, &ref)) < 0) {
         return ret;
     } else if (ret == 0) {
@@ -1136,8 +1235,11 @@ FF_ENABLE_DEPRECATION_WARNINGS
         *got_frame = 1;
         return pkt->size;
     }
-    data += ret;
-    size -= ret;
+
+	if(!avctx->hwaccel){
+    	data += ret;
+    	size -= ret;
+	}
 
     if (!retain_segmap_ref || s->s.h.keyframe || s->s.h.intraonly) {
         if (s->s.frames[REF_FRAME_SEGMAP].tf.f->buf[0])
@@ -1180,18 +1282,39 @@ FF_ENABLE_DEPRECATION_WARNINGS
             return ret;
     }
 
-    if (avctx->hwaccel) {
-        ret = avctx->hwaccel->start_frame(avctx, NULL, 0);
-        if (ret < 0)
-            return ret;
-        ret = avctx->hwaccel->decode_slice(avctx, pkt->data, pkt->size);
-        if (ret < 0)
-            return ret;
-        ret = avctx->hwaccel->end_frame(avctx);
-        if (ret < 0)
-            return ret;
-        goto finish;
+
+    if (s->s.h.refreshctx && s->s.h.parallelmode) {
+        int j, k, l, m;
+
+        for (i = 0; i < 4; i++) {
+            for (j = 0; j < 2; j++)
+                for (k = 0; k < 2; k++)
+                    for (l = 0; l < 6; l++)
+                        for (m = 0; m < 6; m++)
+                            memcpy(s->prob_ctx[s->s.h.framectxid].coef[i][j][k][l][m],
+                                   s->prob.coef[i][j][k][l][m], 3);
+            if (s->s.h.txfmmode == i)
+                break;
+        }
+        s->prob_ctx[s->s.h.framectxid].p = s->prob.p;
+        ff_thread_finish_setup(avctx);
+    } else if (!s->s.h.refreshctx) {
+        ff_thread_finish_setup(avctx);
+        ;
     }
+	if (avctx->hwaccel) {
+		ret = avctx->hwaccel->start_frame(avctx, NULL, 0);
+		if (ret < 0)
+			return ret;
+		//ret = avctx->hwaccel->decode_slice(avctx, pkt->data, pkt->size);
+		ret = avctx->hwaccel->decode_slice(avctx, data, size);
+		if (ret < 0)
+			return ret;
+		ret = avctx->hwaccel->end_frame(avctx);
+		if (ret < 0)
+			return ret;
+		goto finish;
+	}
 
     // main tile decode loop
     bytesperpixel = s->bytesperpixel;
@@ -1212,24 +1335,6 @@ FF_ENABLE_DEPRECATION_WARNINGS
         av_log(avctx, AV_LOG_ERROR,
                "Failed to allocate block buffers\n");
         return ret;
-    }
-    if (s->s.h.refreshctx && s->s.h.parallelmode) {
-        int j, k, l, m;
-
-        for (i = 0; i < 4; i++) {
-            for (j = 0; j < 2; j++)
-                for (k = 0; k < 2; k++)
-                    for (l = 0; l < 6; l++)
-                        for (m = 0; m < 6; m++)
-                            memcpy(s->prob_ctx[s->s.h.framectxid].coef[i][j][k][l][m],
-                                   s->prob.coef[i][j][k][l][m], 3);
-            if (s->s.h.txfmmode == i)
-                break;
-        }
-        s->prob_ctx[s->s.h.framectxid].p = s->prob.p;
-        ff_thread_finish_setup(avctx);
-    } else if (!s->s.h.refreshctx) {
-        ff_thread_finish_setup(avctx);
     }
 
     do {
@@ -1378,6 +1483,12 @@ finish:
             return ret;
         *got_frame = 1;
     }
+
+	if (avctx->hwaccel) {
+		if(mVP9ParseContext.n_frames >= 0){
+			goto again;
+		}
+	}
 
     return pkt->size;
 }

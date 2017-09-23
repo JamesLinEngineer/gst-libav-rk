@@ -826,7 +826,7 @@ OBJS-$(CONFIG_HEVC_RKVDEC_HWACCEL)        += rkvdec_hevc.o allocator_drm.o
 OBJS-$(CONFIG_H264_RKVDEC_HWACCEL)        += rkvdec_h264.o allocator_drm.o
 OBJS-$(CONFIG_H263_RKVDEC_HWACCEL)        += rkvdec_h263.o allocator_drm.o
 OBJS-$(CONFIG_MPEG2VIDEO_RKVDEC_HWACCEL)  += rkvdec_mpeg2video.o allocator_drm.o
-
+OBJS-$(CONFIG_VP9_RKVDEC_HWACCEL)         += rkvdec_vp9.o allocator_drm.o
 
 # libavformat dependencies
 OBJS-$(CONFIG_ISO_MEDIA)               += mpeg4audio.o mpegaudiodata.o

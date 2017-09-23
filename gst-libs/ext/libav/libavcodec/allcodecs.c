@@ -126,6 +126,7 @@ static void register_all(void)
     REGISTER_HWACCEL(H264_RKVDEC,       h264_rkvdec);
     REGISTER_HWACCEL(H263_RKVDEC,       h263_rkvdec);
     REGISTER_HWACCEL(MPEG2VIDEO_RKVDEC, mpeg2video_rkvdec);
+    REGISTER_HWACCEL(VP9_RKVDEC,        vp9_rkvdec);
 
     /* video codecs */
     REGISTER_ENCODER(A64MULTI,          a64multi);
