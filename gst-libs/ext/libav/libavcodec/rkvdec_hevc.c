@@ -66,7 +66,6 @@ struct _RKVDECHevcContext{
      LPRKVDEC_ScalingFactor_Model_HEVC scaling_rk;
      LPRKVDEC_Slice_RPS_Info rps_info;
      AVFrame* cabac_table_data;
-     AVFrame* syntax_data;
      AVFrame* scaling_list_data;
      AVFrame* pps_data;
      AVFrame* rps_data;
@@ -1098,7 +1097,7 @@ static int rkvdec_hevc_regs_gen_pps(AVCodecContext* avctx)
         scaling_addr = 80 * 1360;
 
     memcpy(scaling_ptr + scaling_addr, ctx->scaling_rk, sizeof(RKVDEC_ScalingFactor_Model_HEVC));
-    scaling_addr = (ff_rkvdec_get_fd(ctx->syntax_data) | ((ctx->scaling_list_data->data[0] - ctx->syntax_data->data[0] + scaling_addr) << 10));
+    scaling_addr = (ff_rkvdec_get_fd(ctx->scaling_list_data) | (scaling_addr << 10));
     put_bits_a64(&bp, 32, scaling_addr);
 
     put_align_a64(&bp, 64, 0xf);
@@ -1158,9 +1157,8 @@ static int rkvdec_hevc_regs_gen_reg(AVCodecContext *avctx)
     hw_regs->sw_cur_poc = pp->CurrPicOrderCntVal;
 
     hw_regs->sw_cabactbl_base = ff_rkvdec_get_fd(ctx->cabac_table_data);
-    hw_regs->sw_pps_base = hw_regs->sw_rps_base = ff_rkvdec_get_fd(ctx->syntax_data);
-    hw_regs->sw_pps_base      += ((ctx->pps_data->data[0] - ctx->syntax_data->data[0]) << 10);
-    hw_regs->sw_rps_base      += ((ctx->rps_data->data[0] - ctx->syntax_data->data[0]) << 10);
+    hw_regs->sw_pps_base      = ff_rkvdec_get_fd(ctx->pps_data);
+    hw_regs->sw_rps_base      = ff_rkvdec_get_fd(ctx->rps_data);
     hw_regs->sw_strm_rlc_base = ff_rkvdec_get_fd(ctx->stream_data);
 
     hw_regs->sw_stream_len = ((ctx->stream_data->pkt_size + 15) & (~15)) + 64;
@@ -1380,23 +1378,17 @@ static int rkvdec_hevc_context_init(AVCodecContext *avctx)
     ctx->allocator->alloc(ctx->allocator_ctx, ctx->cabac_table_data);
     memcpy(ctx->cabac_table_data->data[0], cabac_table, sizeof(cabac_table));
 
-    ctx->syntax_data = av_frame_alloc();
-    ctx->syntax_data->linesize[0] = SCALING_LIST_SIZE +
-                                    PPS_SIZE +
-                                    RPS_SIZE;
-    ctx->allocator->alloc(ctx->allocator_ctx, ctx->syntax_data);
-
-    ctx->rps_data = av_frame_alloc();
-    ctx->rps_data->linesize[0] = RPS_SIZE;
-    ctx->rps_data->data[0] = ctx->syntax_data->data[0];
+    ctx->scaling_list_data = av_frame_alloc();
+    ctx->scaling_list_data->linesize[0] = SCALING_LIST_SIZE;
+    ctx->allocator->alloc(ctx->allocator_ctx, ctx->scaling_list_data);
 
     ctx->pps_data = av_frame_alloc();
     ctx->pps_data->linesize[0] = PPS_SIZE;
-    ctx->pps_data->data[0] = ctx->rps_data->data[0] + RPS_SIZE;
+    ctx->allocator->alloc(ctx->allocator_ctx, ctx->pps_data);
 
-    ctx->scaling_list_data = av_frame_alloc();
-    ctx->scaling_list_data->linesize[0] = SCALING_LIST_SIZE;
-    ctx->scaling_list_data->data[0] = ctx->pps_data->data[0] + PPS_SIZE;
+    ctx->rps_data = av_frame_alloc();
+    ctx->rps_data->linesize[0] = RPS_SIZE;
+    ctx->allocator->alloc(ctx->allocator_ctx, ctx->rps_data);
 
     ctx->stream_data = av_frame_alloc();
     ctx->stream_data->linesize[0] = DATA_SIZE;
@@ -1425,13 +1417,13 @@ static int rkvdec_hevc_context_uninit(AVCodecContext *avctx)
     RKVDECHevcContext * const ctx = ff_rkvdec_get_context(avctx);
 
     av_log(avctx, AV_LOG_INFO, "RK_HEVC_DEC: rkvdec_hevc_context_uninit\n");
-
-    ctx->allocator->free(ctx->allocator_ctx, ctx->syntax_data);
-    ctx->allocator->free(ctx->allocator_ctx, ctx->cabac_table_data);
+    ctx->allocator->free(ctx->allocator_ctx, ctx->cabac_table_data);    
+    ctx->allocator->free(ctx->allocator_ctx, ctx->scaling_list_data);    
+    ctx->allocator->free(ctx->allocator_ctx, ctx->pps_data);
+    ctx->allocator->free(ctx->allocator_ctx, ctx->rps_data);
     ctx->allocator->free(ctx->allocator_ctx, ctx->stream_data);
     ctx->allocator->close(ctx->allocator_ctx);
 
-    av_free(ctx->syntax_data);
     av_free(ctx->cabac_table_data);
     av_free(ctx->scaling_list_data);
     av_free(ctx->pps_data);
