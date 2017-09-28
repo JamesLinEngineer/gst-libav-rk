@@ -305,6 +305,8 @@ static int rkvdec_mpeg2video_regs_gen_reg(AVCodecContext *avctx)
     return 0;
 }
 
+#define AV_GET_BUFFER_FLAG_CONTAIN_MV (1 << 1)
+
 static int rkvdec_mpeg2video_alloc_frame(AVCodecContext *avctx, AVFrame *frame)
 {
     av_assert0(frame);
@@ -312,7 +314,7 @@ static int rkvdec_mpeg2video_alloc_frame(AVCodecContext *avctx, AVFrame *frame)
     av_assert0(frame->height);
     frame->width = ALIGN(frame->width, 16);
     frame->height = ALIGN(frame->height, 16);
-    return avctx->get_buffer2(avctx, frame, 0);
+    return avctx->get_buffer2(avctx, frame, AV_GET_BUFFER_FLAG_CONTAIN_MV);
 }
 
 /** Initialize and start decoding a frame with RKVDEC. */
