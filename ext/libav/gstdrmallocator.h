@@ -58,6 +58,7 @@ struct drm_bo
 struct _GstDRMAllocatorPrivate
 {
   int device_fd;
+  gfloat alloc_scale;
 };
 
 struct _GstDRMMemory

@@ -50,6 +50,7 @@ G_DEFINE_TYPE_WITH_CODE (GstDRMAllocator, gst_drm_allocator, GST_TYPE_ALLOCATOR,
 enum
 {
   PROP_DRM_FD = 1,
+  PROP_DRM_ALLOC_SCALE,
   PROP_N,
 };
 
@@ -170,8 +171,10 @@ gst_drm_bpp_from_drm (guint32 drmfmt)
   return bpp;
 }
 
+#define ALIGN(value, x) ((value + (x - 1)) & (~(x - 1)))
+
 guint32
-gst_drm_height_from_drm (guint32 drmfmt, guint32 height)
+gst_drm_width_from_drm(guint32 drmfmt, guint32 width)
 {
   guint32 ret;
 
@@ -180,17 +183,17 @@ gst_drm_height_from_drm (guint32 drmfmt, guint32 height)
     case DRM_FORMAT_YVU420:
     case DRM_FORMAT_YUV422:
     case DRM_FORMAT_NV21:
-      ret = height * 3 / 2;
+      ret = width * 3 / 2;
       break;
     case DRM_FORMAT_NV16:
     case DRM_FORMAT_NV12:
-      ret = height * 2;
+      ret = ALIGN(width, 256) * 3 / 2;
       break;
     case DRM_FORMAT_NV12_10:
-      ret = (height * 10 / 8) * 2;
+      ret = ALIGN((width * 10 / 8), 256) * 3 / 2;
       break;
     default:
-      ret = height;
+      ret = width;
       break;
   }
 
@@ -288,9 +291,9 @@ gst_drm_allocator_alloc (GstAllocator * allocator, GstVideoInfo * vinfo)
   w = GST_VIDEO_INFO_WIDTH (vinfo);
   h = GST_VIDEO_INFO_HEIGHT (vinfo);
   fmt = gst_drm_format_from_video(GST_VIDEO_INFO_FORMAT (vinfo));
-  arg.bpp = gst_drm_bpp_from_drm (fmt);
-  arg.width = w;
-  arg.height = gst_drm_height_from_drm (fmt, GST_VIDEO_INFO_HEIGHT (vinfo)); 
+  arg.bpp = 8;
+  arg.height = 1;
+  arg.width = h * gst_drm_width_from_drm(fmt, w) * alloc->priv->alloc_scale;
 
   ret = drmIoctl (alloc->priv->device_fd, DRM_IOCTL_MODE_CREATE_DUMB, &arg);
   if (ret)
@@ -331,6 +334,11 @@ gst_drm_allocator_alloc (GstAllocator * allocator, GstVideoInfo * vinfo)
 
   ret = drmModeAddFB2 (alloc->priv->device_fd, w, h, fmt, bo_handles, pitches,
       offsets, &drmmem->fb_id, 0);
+  if (ret < 0) {
+    GST_ERROR_OBJECT (alloc, "drmModeAddFB2 failed: %s (%d)",
+      strerror (-ret), ret);
+    goto create_failed;
+  }
 
   p = gst_drm_memory_map(mem, drmmem->bo->size, 0);
   
@@ -360,6 +368,9 @@ gst_drm_allocator_get_property (GObject * object, guint prop_id,
     case PROP_DRM_FD:
       g_value_set_int (value, alloc->priv->device_fd);
       break;
+    case PROP_DRM_ALLOC_SCALE:
+      g_value_set_float(value, alloc->priv->alloc_scale);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -379,7 +390,11 @@ gst_drm_allocator_set_property (GObject * object, guint prop_id,
       int fd = g_value_get_int (value);
       if (fd > -1)
         alloc->priv->device_fd = fd;
-
+      break;
+    }
+    case PROP_DRM_ALLOC_SCALE:{
+      gfloat as = g_value_get_float(value);
+      alloc->priv->alloc_scale = as;
       break;
     }
     default:
@@ -420,6 +435,8 @@ gst_drm_allocator_class_init (GstDRMAllocatorClass * klass)
   g_props[PROP_DRM_FD] = g_param_spec_int ("drm-fd", "DRM fd",
       "DRM file descriptor", -1, G_MAXINT, -1,
       G_PARAM_READWRITE | G_PARAM_CONSTRUCT);
+  g_props[PROP_DRM_ALLOC_SCALE] = g_param_spec_float ("alloc-scale", "Alloc-Scale Factor",
+      "DRM alloc buffer yuv/nv12 size scale factor", 1.0f, 3.0f, 1.0f, G_PARAM_READWRITE | G_PARAM_CONSTRUCT);
 
   g_object_class_install_properties (gobject_class, PROP_N, g_props);
 }
@@ -535,6 +552,4 @@ gst_drm_allocator_new (int fd)
   return g_object_new (GST_TYPE_DRM_ALLOCATOR, "name",
       "DRMMemory::allocator", "drm-fd", fd, NULL);
 }
-
-
 
