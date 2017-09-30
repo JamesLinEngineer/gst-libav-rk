@@ -125,6 +125,7 @@ static void register_all(void)
     REGISTER_HWACCEL(HEVC_RKVDEC10,     hevc_rkvdec10);
     REGISTER_HWACCEL(H264_RKVDEC,       h264_rkvdec);
     REGISTER_HWACCEL(H263_RKVDEC,       h263_rkvdec);
+    REGISTER_HWACCEL(MPEG4_RKVDEC,      mpeg4_rkvdec);
     REGISTER_HWACCEL(MPEG2VIDEO_RKVDEC, mpeg2video_rkvdec);
     REGISTER_HWACCEL(VP9_RKVDEC,        vp9_rkvdec);
 
@@ -726,6 +727,5 @@ static void register_all(void)
 void avcodec_register_all(void)
 {
     static AVOnce control = AV_ONCE_INIT;
-
     ff_thread_once(&control, register_all);
 }

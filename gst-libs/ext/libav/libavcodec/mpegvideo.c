@@ -1309,7 +1309,7 @@ int ff_mpv_frame_start(MpegEncContext *s, AVCodecContext *avctx)
         s->last_picture_ptr->reference   = 3;
         s->last_picture_ptr->f->key_frame = 0;
         s->last_picture_ptr->f->pict_type = AV_PICTURE_TYPE_P;
-
+        s->last_picture_ptr->f->decode_error_flags = FF_DECODE_ERROR_MISSING_REFERENCE;
         if (alloc_picture(s, s->last_picture_ptr, 0) < 0) {
             s->last_picture_ptr = NULL;
             return -1;
