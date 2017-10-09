@@ -668,7 +668,7 @@ gst_ffmpegvideodec_prepare_dr_pool (GstFFMpegVidDec * ffmpegdec,
 
 static void
 gst_ffmpegviddec_ensure_internal_pool (GstFFMpegVidDec * ffmpegdec,
-    AVFrame * picture)
+    AVFrame * picture, int flags)
 {
   GstAllocationParams params = DEFAULT_ALLOC_PARAM;
   GstVideoInfo info;
@@ -702,6 +702,10 @@ gst_ffmpegviddec_ensure_internal_pool (GstFFMpegVidDec * ffmpegdec,
   if (ffmpegdec->hw_accel) {
     ffmpegdec->internal_pool = gst_drm_buffer_pool_new();
     allocator = gst_drm_allocator_new (0);
+    if (flags & 2)
+      g_object_set(G_OBJECT(allocator),
+                    "alloc-scale", 1.4,
+                    NULL);
   } else {
     ffmpegdec->internal_pool = gst_video_buffer_pool_new ();
   }
@@ -795,7 +799,7 @@ gst_ffmpegviddec_get_buffer2 (AVCodecContext * context, AVFrame * picture,
   if (!gst_ffmpegviddec_can_direct_render (ffmpegdec))
     goto no_dr;
 
-  gst_ffmpegviddec_ensure_internal_pool (ffmpegdec, picture);
+  gst_ffmpegviddec_ensure_internal_pool (ffmpegdec, picture, flags);
 
   ret = gst_buffer_pool_acquire_buffer (ffmpegdec->internal_pool,
       &frame->output_buffer, NULL);
