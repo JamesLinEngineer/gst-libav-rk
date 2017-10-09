@@ -961,7 +961,7 @@ static int rkvdec_hevc_regs_gen_pps(AVCodecContext* avctx)
     log2_min_cb_size = pp->log2_min_luma_coding_block_size_minus3 + 3;
     width = (pp->PicWidthInMinCbsY << log2_min_cb_size);
     height = (pp->PicHeightInMinCbsY << log2_min_cb_size);
-    
+
     put_bits_a64(&bp, 13, width);
     put_bits_a64(&bp, 13, height);
     put_bits_a64(&bp, 4, pp->bit_depth_luma_minus8 + 8);
@@ -1032,7 +1032,7 @@ static int rkvdec_hevc_regs_gen_pps(AVCodecContext* avctx)
     put_bits_a64(&bp, 5, pp->num_tile_columns_minus1 + 1);
     put_bits_a64(&bp, 5, pp->num_tile_rows_minus1 + 1);
     put_bits_a64(&bp, 2, 3);
-    
+
     put_align_a64(&bp, 64, 0xf);
 
     if (pp->tiles_enabled_flag) {
@@ -1250,7 +1250,7 @@ static int fill_picture_colmv(const HEVCContext* h)
     RKVDECHevcContext* const ctx = ff_rkvdec_get_context(h->avctx);
     HEVCFrame* current_picture = h->ref;
 
-    int enable_colmv = 0;
+    int enable_colmv = 1;
 
     if (!enable_colmv && !ctx->motion_val_pool)
      return 0;
@@ -1265,7 +1265,7 @@ static int fill_picture_colmv(const HEVCContext* h)
     current_picture->hwaccel_priv_buf = av_buffer_pool_get(ctx->motion_val_pool);
     current_picture->hwaccel_picture_private = current_picture->hwaccel_priv_buf->data;
     if (prev_ref)
-        av_buffer_unref(&prev_ref);
+      av_buffer_unref(&prev_ref);
 
     return 0;
 }

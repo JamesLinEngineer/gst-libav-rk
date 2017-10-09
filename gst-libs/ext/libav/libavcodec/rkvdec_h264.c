@@ -748,7 +748,7 @@ static int fill_picture_colmv(const H264Context* h)
 {
     RKVDECH264Context * const ctx = ff_rkvdec_get_context(h->avctx);
     H264Picture *current_picture = h->cur_pic_ptr;
-    int enable_colmv = 0;
+    int enable_colmv = 1;
 
     if (!enable_colmv && !ctx->motion_val_pool)
         return 0;
