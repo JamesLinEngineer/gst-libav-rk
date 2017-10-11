@@ -920,6 +920,8 @@ static int rkvdec_hevc_regs_gen_rps(AVCodecContext* avctx)
         memcpy(rps_ptr, rps_packet, nb_slice * 32);
     }
 
+    av_free(rps_packet);
+
 #ifdef dump_rps
     if (fp == NULL)
         fp = fopen("hal.bin", "wb");
