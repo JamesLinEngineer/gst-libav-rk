@@ -469,6 +469,22 @@ static int submit_packet(PerThreadContext *p, AVCodecContext *user_avctx,
     return 0;
 }
 
+static int ff_thread_threads_finished(AVCodecContext *avctx)
+{
+    FrameThreadContext *fctx = avctx->internal->thread_ctx;
+    PerThreadContext *p;
+    int i, finish_num;
+
+    finish_num = 0;
+    for (i = 0; i < avctx->thread_count; i++) {
+        p = &fctx->threads[i];
+        if (p && atomic_load(&p->state) == STATE_INPUT_READY && p->got_frame == 0)
+            finish_num++;
+    }
+
+    return (finish_num == avctx->thread_count);
+}
+
 int ff_thread_decode_frame(AVCodecContext *avctx,
                            AVFrame *picture, int *got_picture_ptr,
                            AVPacket *avpkt)
@@ -481,6 +497,13 @@ int ff_thread_decode_frame(AVCodecContext *avctx,
     /* release the async lock, permitting blocked hwaccel threads to
      * go forward while we are in this function */
     async_unlock(fctx);
+
+    /*
+     * if all threads finished and not frame can got reset delaying to active
+     */
+    if (!fctx->delaying) {
+        fctx->delaying = ff_thread_threads_finished(avctx);
+    }
 
     /*
      * Submit a packet to the next decoding thread.
