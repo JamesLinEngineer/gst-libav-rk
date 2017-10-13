@@ -600,10 +600,13 @@ static int rkvdec_h264_regs_gen_scanlist(AVCodecContext* avctx)
             for (j = 0; j < 16; j++)
                 put_bits_a64(&bp, 8, sl->bScalingLists4x4[i][j]);
         }
-        for (i = 0; i < 2; i++) {
-            for (j = 0; j < 64; j++)
-                put_bits_a64(&bp, 8, sl->bScalingLists8x8[i][j]);
-        }
+
+        for (j = 0; j < 64; j++)
+            put_bits_a64(&bp, 8, sl->bScalingLists8x8[0][j]);
+
+        for (j = 0; j < 64; j++)
+            put_bits_a64(&bp, 8, sl->bScalingLists8x8[3][j]);
+
     }
 
 #ifdef dump_sl
