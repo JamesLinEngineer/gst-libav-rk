@@ -1141,13 +1141,13 @@ static int rkvdec_hevc_regs_gen_reg(AVCodecContext *avctx)
     width = (pp->PicWidthInMinCbsY << log2_min_cb_size);
     height = (pp->PicHeightInMinCbsY << log2_min_cb_size);
     numCuInWidth   = width / uiMaxCUWidth  + (width % uiMaxCUWidth != 0);
-    
-    stride_y      = ((((numCuInWidth * uiMaxCUWidth * (pp->bit_depth_luma_minus8 + 8) + 2047)
-                       & (~2047)) | 2048) >> 3);
-    stride_uv     = ((((numCuInWidth * uiMaxCUHeight * (pp->bit_depth_chroma_minus8 + 8) + 2047)
-                       & (~2047)) | 2048) >> 3);
+
+    stride_y      = (ALIGN((numCuInWidth * uiMaxCUWidth * (pp->bit_depth_luma_minus8 + 8)), 2048) >> 3);
+    stride_uv     = (ALIGN((numCuInWidth * uiMaxCUHeight * (pp->bit_depth_luma_minus8 + 8)), 2048) >> 3);
+
     virstrid_y    = stride_y * height;
     virstrid_yuv  = virstrid_y + stride_uv * height / 2;
+
     hw_regs->sw_picparameter.sw_slice_num = ctx->slice_count;
     hw_regs->sw_picparameter.sw_y_hor_virstride = stride_y >> 4;
     hw_regs->sw_picparameter.sw_uv_hor_virstride = stride_uv >> 4;
