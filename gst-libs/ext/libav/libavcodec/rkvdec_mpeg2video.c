@@ -266,6 +266,13 @@ static int rkvdec_mpeg2video_regs_gen_reg(AVCodecContext *avctx)
         reg->cur_pic_base = ff_rkvdec_get_fd(h->current_picture_ptr->f) | (((dx->seq.decode_width + 15) & (~15)) << 10);
     }
 
+    if (h->last_picture_ptr) {
+        if (h->last_picture_ptr->f->decode_error_flags && h->pict_type!=AV_PICTURE_TYPE_I) {
+            av_log(avctx, AV_LOG_INFO, "fill_picture_parameters missing reference");
+            h->current_picture_ptr->f->decode_error_flags = FF_DECODE_ERROR_MISSING_REFERENCE;
+        }
+    }
+
     if (!h->last_picture_ptr){
         h->last_picture_ptr=h->current_picture_ptr;
     }

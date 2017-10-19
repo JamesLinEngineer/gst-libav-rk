@@ -1284,7 +1284,8 @@ int ff_mpv_frame_start(MpegEncContext *s, AVCodecContext *avctx)
 
     if ((!s->last_picture_ptr || !s->last_picture_ptr->f->buf[0]) &&
         (s->pict_type != AV_PICTURE_TYPE_I ||
-         s->picture_structure != PICT_FRAME)) {
+         s->picture_structure != PICT_FRAME ||
+         avctx->codec_id==AV_CODEC_ID_MPEG2VIDEO)) {
         int h_chroma_shift, v_chroma_shift;
         av_pix_fmt_get_chroma_sub_sample(s->avctx->pix_fmt,
                                          &h_chroma_shift, &v_chroma_shift);
