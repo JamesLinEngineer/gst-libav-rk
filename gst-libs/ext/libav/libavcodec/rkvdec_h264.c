@@ -60,6 +60,7 @@ struct _RKVDECH264Context{
     os_allocator *allocator;
     void *allocator_ctx;
     pthread_mutex_t hwaccel_mutex;
+    int err_info;
 };
 
 struct _RKVDECH264FrameData{
@@ -272,10 +273,6 @@ static void fill_picture_parameters(const H264Context *h, LPRKVDEC_PicParams_H26
                 pp->UsedForReferenceFlags |= 1 << (2*i + 0);
             if (r->reference & PICT_BOTTOM_FIELD)
                 pp->UsedForReferenceFlags |= 1 << (2*i + 1);
-
-            if (j - 1 < h->short_ref_count)
-                current_picture->f->decode_error_flags |= r->f->decode_error_flags;
-
         } else {
             pp->RefFrameList[i].bPicEntry = 0xff;
             pp->FieldOrderCntList[i][0]   = 0;
@@ -548,20 +545,22 @@ static int rkvdec_h264_regs_gen_rps(AVCodecContext* avctx)
 
     /* p ref */
     for (i = 0; i < 32; i++) {
-	const H264Picture *r = sl->ref_list[0][i].parent;
-	dpb_valid = (r == NULL || get_refpic_index(pp, ff_rkvdec_get_fd(r->f)) == 0xff || sl->slice_type_nos != AV_PICTURE_TYPE_P) ? 0 : 1;
+        const H264Picture *r = sl->ref_list[0][i].parent;
+        dpb_valid = (r == NULL || get_refpic_index(pp, ff_rkvdec_get_fd(r->f)) == 0xff || sl->slice_type_nos != AV_PICTURE_TYPE_P) ? 0 : 1;
         dpb_idx = dpb_valid ? get_refpic_index(pp, ff_rkvdec_get_fd(r->f)) : 0;
         bottom_flag = dpb_valid ? sl->ref_list[0][i].reference == PICT_BOTTOM_FIELD : 0;
         voidx = dpb_valid ? pp->RefPicLayerIdList[dpb_idx] : 0;
         put_bits_a64(&bp, 5, dpb_idx | (dpb_valid << 4)); //!< dpb_idx
         put_bits_a64(&bp, 1, bottom_flag);
         put_bits_a64(&bp, 1, voidx);
+        if (dpb_valid && i < sl->ref_count[0])
+            h->cur_pic_ptr->f->decode_error_flags |= r->f->decode_error_flags;
     }
 
     /* b ref */
     for (j = 0; j < 2; j++) {
         for (i = 0; i < 32; i++) {
-	    const H264Picture *r = sl->ref_list[j][i].parent;
+            const H264Picture *r = sl->ref_list[j][i].parent;
             dpb_valid =  (r == NULL || get_refpic_index(pp, ff_rkvdec_get_fd(r->f)) == 0xff || sl->slice_type_nos != AV_PICTURE_TYPE_B) ? 0 : 1;
             dpb_idx = dpb_valid ? get_refpic_index(pp, ff_rkvdec_get_fd(r->f)) : 0;
             bottom_flag = dpb_valid ? sl->ref_list[j][i].reference == PICT_BOTTOM_FIELD : 0;
@@ -569,6 +568,8 @@ static int rkvdec_h264_regs_gen_rps(AVCodecContext* avctx)
             put_bits_a64(&bp, 5, dpb_idx | (dpb_valid << 4)); //!< dpb_idx
             put_bits_a64(&bp, 1, bottom_flag);
             put_bits_a64(&bp, 1, voidx);
+            if (dpb_valid && i < sl->ref_count[1])
+                h->cur_pic_ptr->f->decode_error_flags |= r->f->decode_error_flags;
         }
     }
     put_align_a64(&bp, 128, 0);
@@ -773,6 +774,23 @@ static int fill_picture_colmv(const H264Context* h)
     return 0;
 }
 
+static int fill_picture_error_flag(const H264Context* h)
+{
+    RKVDECH264Context * const ctx = ff_rkvdec_get_context(h->avctx);
+    if (ctx->err_info) {
+        if (h->avctx->active_thread_type & FF_THREAD_FRAME) {
+            for (int i = 0; i < H264_MAX_PICTURE_COUNT; i++) {
+                if (h->DPB[i].frame_num == h->poc.prev_frame_num) {
+                    h->DPB[i].f->decode_error_flags = FF_DECODE_ERROR_INVALID_BITSTREAM;
+                    break;
+                }
+            }
+        }
+    }
+    ctx->err_info = 0;
+    return 0;
+}
+
  /** Initialize and start decoding a frame with RKVDEC. */
 static int rkvdec_h264_start_frame(AVCodecContext          *avctx,
                                   av_unused const uint8_t *buffer,
@@ -783,6 +801,7 @@ static int rkvdec_h264_start_frame(AVCodecContext          *avctx,
 
     av_log(avctx, AV_LOG_INFO, "RK_H264_DEC: rkvdec_h264_start_frame\n");
     pthread_mutex_lock(&ctx->hwaccel_mutex);
+    fill_picture_error_flag(h);
     fill_picture_colmv(h);
     fill_picture_parameters(h, ctx->pic_param);
     fill_scaling_lists(h, ctx->scaling_list);
@@ -796,8 +815,10 @@ static int rkvdec_h264_end_frame(AVCodecContext *avctx)
 {
     RKVDECH264Context * const ctx = ff_rkvdec_get_context(avctx);
     RKVDECH264HwReq req;
-    H264Context * const h = avctx->priv_data;
     int ret;
+    H264Context * const h = avctx->priv_data;
+    const H264Picture *pic = h->cur_pic_ptr;
+    AVFrame* f = pic->f;
 
     av_log(avctx, AV_LOG_INFO, "RK_H264_DEC: rkvdec_h264_end_frame\n");
 
@@ -828,7 +849,18 @@ static int rkvdec_h264_end_frame(AVCodecContext *avctx)
 
     av_log(avctx, AV_LOG_INFO, "ioctl VPU_IOC_GET_REG start.");
     ret = ioctl(ctx->vpu_socket, VPU_IOC_GET_REG, &req);
-    av_log(avctx, AV_LOG_INFO, "ioctl VPU_IOC_GET_REG success.");
+
+    if (ctx->hw_regs->swreg1_int.sw_dec_error_sta
+    || (!ctx->hw_regs->swreg1_int.sw_dec_rdy_sta)
+    || ctx->hw_regs->swreg1_int.sw_dec_empty_sta
+    || ctx->hw_regs->swreg45_strmd_error_status.sw_strmd_error_status
+    || ctx->hw_regs->swreg45_strmd_error_status.sw_colmv_error_ref_picidx
+    || ctx->hw_regs->swreg76_h264_errorinfo_num.sw_strmd_detect_error_flag) {
+        f->decode_error_flags = FF_DECODE_ERROR_INVALID_BITSTREAM;
+        ctx->err_info = 1;
+    }
+
+    av_log(avctx, AV_LOG_INFO, "ioctl VPU_IOC_GET_REG success. ret: %d err: %d", ret, f->decode_error_flags);
 
     pthread_mutex_unlock(&ctx->hwaccel_mutex);
 
