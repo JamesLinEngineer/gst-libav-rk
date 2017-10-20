@@ -448,6 +448,10 @@ static int add_candidate_ref(HEVCContext *s, RefPicList *list,
         ref = generate_missing_ref(s, poc);
         if (!ref)
             return AVERROR(ENOMEM);
+        if (s->avctx->hwaccel && ref->frame) {
+            ref->frame->decode_error_flags = FF_DECODE_ERROR_INVALID_BITSTREAM;
+            s->ref->frame->decode_error_flags = FF_DECODE_ERROR_MISSING_REFERENCE;
+        }
     }
 
     list->list[list->nb_refs] = ref->poc;
