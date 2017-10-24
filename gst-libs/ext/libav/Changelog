@@ -1,6 +1,14 @@
 Entries are sorted chronologically from oldest to youngest within each release,
 releases are sorted from youngest to oldest.
 
+version 3.3.4:
+- avcodec/rkvdec_hevc: Add rockchip hevc hardware accel support
+- avcodec/rkvdec_h264: Add rockchip h264 hardware accel support
+- avcodec/rkvdec_h263: Add rockchip h263 hardware accel support
+- avcodec/rkvdec_vp9: Add rockchip vp9 hardware accel support
+- avcodec/rkvdec_mpeg2video: Add rockchip mpeg2 hardware accel support
+- avcodec/rkvdec_mpeg4: Add rockchip mpeg4 hardware accel support
+
 
 version 3.3.3:
 - avcodec/aacdec_template (fixed point): Check gain in decode_cce() to avoid undefined shifts later
