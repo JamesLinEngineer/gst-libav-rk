@@ -401,6 +401,10 @@ static void fill_picture_parameters(const HEVCContext *h, LPRKVDEC_PicParams_HEV
             fill_picture_entry(&pp->RefPicList[i], ff_rkvdec_get_fd(frame->frame), !!(frame->flags & HEVC_FRAME_FLAG_LONG_REF));
             fill_picture_entry(&pp->RefColmvList[i], ff_rkvdec_get_fd(frame->hwaccel_picture_private), 0);
             pp->PicOrderCntValList[i] = frame->poc;
+            if (frame->flags & HEVC_FRAME_FLAG_SHORT_REF && !h->frame->key_frame) {
+                h->output_frame->decode_error_flags |= frame->frame->decode_error_flags;
+                current_picture->frame->decode_error_flags |= frame->frame->decode_error_flags;
+            }
         } else {
             pp->RefPicList[i].bPicEntry = 0xff;
             pp->RefColmvList[i].bPicEntry = 0xff;
