@@ -497,6 +497,8 @@ gst_ffmpegviddec_set_format (GstVideoDecoder * decoder,
     } else
       ffmpegdec->context->thread_count = ffmpegdec->max_threads;
 
+    ffmpegdec->context->thread_count = 2;
+
     query = gst_query_new_latency ();
     is_live = FALSE;
     /* Check if upstream is live. If it isn't we can enable frame based
@@ -709,7 +711,17 @@ gst_ffmpegviddec_ensure_internal_pool (GstFFMpegVidDec * ffmpegdec,
   config = gst_buffer_pool_get_config (ffmpegdec->internal_pool);
 
   caps = gst_video_info_to_caps (&info);
-  gst_buffer_pool_config_set_params (config, caps, info.size, 2, 0);
+
+  if (ffmpegdec->hw_accel && GST_VIDEO_INFO_WIDTH(&info) >= 3840) {
+    if (GST_VIDEO_INFO_FORMAT(&info) == GST_VIDEO_FORMAT_P010_10LE) {
+      gst_buffer_pool_config_set_params (config, caps, info.size, 2, 9);
+      GST_WARNING_OBJECT(ffmpegdec, "10bit!");
+    }
+    else
+      gst_buffer_pool_config_set_params (config, caps, info.size, 2, 11);
+  } else 
+    gst_buffer_pool_config_set_params (config, caps, info.size, 2, 0);
+
   gst_buffer_pool_config_set_allocator (config, allocator, &params);
   gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
 
@@ -798,8 +810,19 @@ gst_ffmpegviddec_get_buffer2 (AVCodecContext * context, AVFrame * picture,
 
   gst_ffmpegviddec_ensure_internal_pool (ffmpegdec, picture, flags);
 
-  ret = gst_buffer_pool_acquire_buffer (ffmpegdec->internal_pool,
-      &frame->output_buffer, NULL);
+  if (ffmpegdec->hw_accel) {
+    GstBufferPoolAcquireParams params = { 0, };
+    params.flags = GST_BUFFER_POOL_ACQUIRE_FLAG_DONTWAIT;
+    int retry = 100;
+    while((ret = gst_buffer_pool_acquire_buffer (ffmpegdec->internal_pool,
+      &frame->output_buffer, &params)) != GST_FLOW_OK && retry--) {
+      g_usleep(10000);
+    }
+  } else {
+      ret = gst_buffer_pool_acquire_buffer (ffmpegdec->internal_pool,
+        &frame->output_buffer, NULL);
+  }
+
   if (ret != GST_FLOW_OK)
     goto alloc_failed;
 
