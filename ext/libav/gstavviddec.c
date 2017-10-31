@@ -700,12 +700,8 @@ gst_ffmpegviddec_ensure_internal_pool (GstFFMpegVidDec * ffmpegdec,
     gst_object_unref (ffmpegdec->internal_pool);
 
   if (ffmpegdec->hw_accel) {
-    ffmpegdec->internal_pool = gst_drm_buffer_pool_new();
-    allocator = gst_drm_allocator_new (0);
-    if (flags & 2)
-      g_object_set(G_OBJECT(allocator),
-                    "alloc-scale", 1.4,
-                    NULL);
+    ffmpegdec->internal_pool = gst_drm_buffer_pool_new(flags & 2);
+    ffmpegdec->context->flags |= CODEC_FLAG_EMU_EDGE;
   } else {
     ffmpegdec->internal_pool = gst_video_buffer_pool_new ();
   }
@@ -760,6 +756,7 @@ gst_ffmpegviddec_get_buffer2 (AVCodecContext * context, AVFrame * picture,
   GstFFMpegVidDec *ffmpegdec;
   gint c;
   GstFlowReturn ret;
+  GstMemory *mem;
 
   ffmpegdec = (GstFFMpegVidDec *) context->opaque;
 
@@ -813,8 +810,15 @@ gst_ffmpegviddec_get_buffer2 (AVCodecContext * context, AVFrame * picture,
   gst_buffer_replace (&dframe->buffer, frame->output_buffer);
   gst_buffer_replace (&frame->output_buffer, NULL);
 
+  mem = gst_buffer_peek_memory (dframe->buffer, 0);
+
   /* Fill avpicture */
-  if (!gst_video_frame_map (&dframe->vframe, &ffmpegdec->pool_info,
+  if (gst_is_dmabuf_memory(mem)) {
+    /* hardware accel use dma buffer */
+    if (!gst_video_frame_map (&dframe->vframe, &ffmpegdec->pool_info,
+          dframe->buffer, GST_MAP_READ))
+      goto map_failed;
+  } else if (!gst_video_frame_map (&dframe->vframe, &ffmpegdec->pool_info,
           dframe->buffer, GST_MAP_READWRITE))
     goto map_failed;
   dframe->mapped = TRUE;
@@ -841,12 +845,8 @@ gst_ffmpegviddec_get_buffer2 (AVCodecContext * context, AVFrame * picture,
         picture->data[c]);
   }
 
-  if (ffmpegdec->hw_accel) {
-    GstMemory *mem = gst_buffer_peek_memory (dframe->buffer, 0);
-    if (mem != NULL && gst_is_drm_memory(mem)) {
-      picture->linesize[2] = gst_drm_memory_get_fd(mem);
-    }
-  }
+  if (gst_is_dmabuf_memory(mem))
+    picture->linesize[2] = gst_dmabuf_memory_get_fd(mem);
 
   picture->buf[0] = av_buffer_create (NULL, 0, dummy_free_buffer, dframe, 0);
 

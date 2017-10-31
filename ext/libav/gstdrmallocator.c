@@ -62,6 +62,17 @@ gst_is_drm_memory (GstMemory * mem)
   return gst_memory_is_type (mem, GST_DRM_MEMORY_TYPE);
 }
 
+GQuark
+gst_drm_memory_quark (void)
+{
+  static GQuark quark = 0;
+
+  if (quark == 0)
+    quark = g_quark_from_string ("GstDRMMemory");
+
+  return quark;
+}
+
 guint32
 gst_drm_memory_get_fb_id (GstMemory * mem)
 {
@@ -330,6 +341,9 @@ gst_drm_allocator_alloc (GstAllocator * allocator, GstVideoInfo * vinfo)
     pitches[0] = pitches[1] = GST_ROUND_UP_N(w * 10 / 8, 256);
     offsets[0] = 0;
     offsets[1] = pitches[0] * h;
+    vinfo->stride[0] = vinfo->stride[1] = pitches[0];
+    vinfo->offset[0] = 0;
+    vinfo->offset[1] = offsets[1];
   }
 
   ret = drmModeAddFB2 (alloc->priv->device_fd, w, h, fmt, bo_handles, pitches,
@@ -339,6 +353,8 @@ gst_drm_allocator_alloc (GstAllocator * allocator, GstVideoInfo * vinfo)
       strerror (-ret), ret);
     goto create_failed;
   }
+
+  mem->maxsize = mem->size = drmmem->bo->size;
 
   p = gst_drm_memory_map(mem, drmmem->bo->size, 0);
   

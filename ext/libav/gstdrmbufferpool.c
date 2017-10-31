@@ -33,7 +33,7 @@ GST_DEBUG_CATEGORY_STATIC (gst_drm_buffer_pool_debug);
 
 #define parent_class gst_drm_buffer_pool_parent_class
 G_DEFINE_TYPE_WITH_CODE (GstDRMBufferPool, gst_drm_buffer_pool,
-    GST_TYPE_VIDEO_BUFFER_POOL, G_ADD_PRIVATE (GstDRMBufferPool);
+    GST_TYPE_BUFFER_POOL, G_ADD_PRIVATE (GstDRMBufferPool);
     GST_DEBUG_CATEGORY_INIT (GST_CAT_DEFAULT, "drmbufferpool", 0,
      "Rockchip DRM buffer pool"));
 
@@ -55,52 +55,49 @@ gst_drm_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
   GstVideoInfo vinfo;
   GstAllocator *allocator;
   GstAllocationParams params;
-  guint size;
+  GstMemory *mem;
+  guint size, min_buffers, max_buffers;
   gboolean ret;
 
   vpool = GST_DRM_BUFFER_POOL_CAST (pool);
   priv = vpool->priv;
 
-  if (!gst_buffer_pool_config_get_params (config, &caps, NULL, NULL, NULL))
+  if (!gst_buffer_pool_config_get_params (config, &caps, &size, &min_buffers, &max_buffers))
     goto wrong_config;
 
   if (!caps)
     goto no_caps;
 
+  if (priv->allocator)
+    gst_object_unref(priv->allocator);
+
   /* now parse the caps from the config */
   if (!gst_video_info_from_caps (&vinfo, caps))
     goto wrong_caps;
 
-  allocator = NULL;
-  gst_buffer_pool_config_get_allocator (config, &allocator, &params);
-
-  /* not our allocator, not our buffers */
-  if (allocator && GST_IS_DRM_ALLOCATOR (allocator)) {
-    if (priv->allocator)
-      gst_object_unref (priv->allocator);
-    if ((priv->allocator = allocator))
-      gst_object_ref (allocator);
-  }
-  if (!priv->allocator)
+  /* try alloc buffer and change info size */
+  mem = gst_drm_allocator_alloc(priv->vallocator, &vinfo);
+  if (!mem)
     goto no_allocator;
+
+  if (vinfo.size != ((GstDRMMemory *) mem)->bo->size) {
+    GST_WARNING_OBJECT(pool, "drm buffer pool change size %d to %d.", vinfo.size, ((GstDRMMemory *) mem)->bo->size);
+    vinfo.size = ((GstDRMMemory *) mem)->bo->size;
+    gst_buffer_pool_config_set_params(config, caps, vinfo.size, min_buffers, max_buffers);
+  }
+
+  /* create dma allocator */
+  priv->allocator = gst_dmabuf_allocator_new();
+  priv->vinfo = vinfo;
 
   /* enable metadata based on config of the pool */
   priv->add_videometa = gst_buffer_pool_config_has_option (config,
       GST_BUFFER_POOL_OPTION_VIDEO_META);
-  
+
   ret = GST_BUFFER_POOL_CLASS (parent_class)->set_config (pool, config);
 
-  /* video pool may align videoinfo size */
-  gst_buffer_pool_config_get_params (config, &caps, &size, NULL, NULL);
-  if (caps == NULL)
-    goto no_caps;
+  gst_memory_unref(mem);
 
-  /* now parse the caps from the config */
-  if (!gst_video_info_from_caps (&vinfo, caps))
-    goto wrong_caps;
-
-  vinfo.size = MAX(vinfo.size, size);
-  priv->vinfo = vinfo;
   return ret;
 
   /* ERRORS */
@@ -136,6 +133,7 @@ gst_drm_buffer_pool_alloc_buffer (GstBufferPool * pool, GstBuffer ** buffer,
   GstDRMBufferPoolPrivate *priv;
   GstVideoInfo *info;
   GstMemory *mem;
+  GstMemory *dma_mem;
 
   vpool = GST_DRM_BUFFER_POOL_CAST (pool);
   priv = vpool->priv;
@@ -147,12 +145,20 @@ gst_drm_buffer_pool_alloc_buffer (GstBufferPool * pool, GstBuffer ** buffer,
   *buffer = gst_buffer_new ();
   if (*buffer == NULL)
     goto no_memory;
-  mem = gst_drm_allocator_alloc (priv->allocator, info);
+
+  mem = gst_drm_allocator_alloc (priv->vallocator, info);
+
   if (!mem) {
     gst_buffer_unref (*buffer);
     goto no_memory;
   }
-  gst_buffer_append_memory (*buffer, mem);
+
+  dma_mem = gst_dmabuf_allocator_alloc(priv->allocator, gst_drm_memory_get_fd(mem), ((GstDRMMemory *) mem)->bo->size);
+
+  gst_mini_object_set_qdata(GST_MINI_OBJECT(dma_mem),
+      GST_DRM_MEMORY_QUARK, mem, (GDestroyNotify) gst_memory_unref);
+
+  gst_buffer_append_memory (*buffer, dma_mem);
 
   if (priv->add_videometa) {
     GstVideoMeta *meta = 
@@ -179,7 +185,7 @@ gst_drm_buffer_pool_release_buffer (GstBufferPool * bpool,
   GstDRMBufferPool *pool;
 
   pool = GST_DRM_BUFFER_POOL(bpool);
-  
+
   GST_DEBUG_OBJECT(pool, "Drm buffer pool release buffer");
 
   return GST_BUFFER_POOL_CLASS (parent_class)->release_buffer (bpool, buffer);
@@ -196,6 +202,9 @@ gst_drm_buffer_pool_finalize (GObject * object)
 
   if (priv->allocator)
     gst_object_unref (priv->allocator);
+
+  if (priv->vallocator)
+    gst_object_unref(priv->vallocator);
 
   G_OBJECT_CLASS (parent_class)->finalize (object);
 }
@@ -225,9 +234,17 @@ gst_drm_buffer_pool_class_init (GstDRMBufferPoolClass * klass)
 }
 
 GstBufferPool *
-gst_drm_buffer_pool_new (void)
+gst_drm_buffer_pool_new (guint flag)
 {
-  return g_object_new (GST_TYPE_DRM_BUFFER_POOL, NULL);
+  GstDRMBufferPool* pool;
+
+  pool = g_object_new (GST_TYPE_DRM_BUFFER_POOL, NULL);
+  pool->priv->vallocator = gst_drm_allocator_new(0);
+  if (flag)
+    g_object_set(G_OBJECT(pool->priv->vallocator),
+                    "alloc-scale", 1.4,
+                    NULL);
+  return pool;
 }
 
 

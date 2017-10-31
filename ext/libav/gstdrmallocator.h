@@ -33,6 +33,8 @@ typedef struct _GstDRMAllocatorClass GstDRMAllocatorClass;
 typedef struct _GstDRMAllocatorPrivate GstDRMAllocatorPrivate;
 typedef struct _GstDRMMemory GstDRMMemory;
 
+#define GST_DRM_MEMORY_QUARK gst_drm_memory_quark()
+
 #define GST_TYPE_DRM_ALLOCATOR	\
    (gst_drm_allocator_get_type())
 #define GST_IS_DRM_ALLOCATOR(obj)				\
@@ -84,6 +86,8 @@ struct _GstDRMAllocatorClass {
 GType gst_drm_allocator_get_type(void) G_GNUC_CONST;
 
 gboolean gst_is_drm_memory (GstMemory *mem);
+
+GQuark gst_drm_memory_quark();
 
 guint32 gst_drm_memory_get_fb_id (GstMemory *mem);
 

@@ -50,13 +50,13 @@ typedef struct _GstDRMBufferPool GstDRMBufferPool;
     
 struct _GstDRMBufferPool
 {
-  GstVideoBufferPool parent;
+  GstBufferPool parent;
   GstDRMBufferPoolPrivate *priv;
 };
 
 struct _GstDRMBufferPoolClass
 {
-  GstVideoBufferPoolClass parent_class;
+  GstBufferPoolClass parent_class;
 };
 
 struct _GstDRMBufferPoolPrivate
@@ -64,13 +64,14 @@ struct _GstDRMBufferPoolPrivate
   gint fd;
   GstVideoInfo vinfo;
   GstAllocator *allocator;
+  GstAllocator *vallocator;
   gboolean add_videometa;
 };
 
 
 GType gst_drm_buffer_pool_get_type (void) G_GNUC_CONST;
 
-GstBufferPool *gst_drm_buffer_pool_new (void);
+GstBufferPool *gst_drm_buffer_pool_new (guint flag);
 
 G_END_DECLS
     
