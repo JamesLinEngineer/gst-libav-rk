@@ -49,7 +49,7 @@ static int drm_ioctl(int fd, int req, void *arg)
     return ret;
 }
 
-extern void *mmap64(void* addr,size_t length, int prot, int flags, int fd, off_t offset); 
+extern void *mmap64(void* addr,size_t length, int prot, int flags, int fd, int64_t offset);
 
 static int os_allocator_drm_alloc(void *ctx, AVFrame *info)
 {
