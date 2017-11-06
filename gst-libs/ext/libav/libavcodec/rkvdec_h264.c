@@ -33,6 +33,7 @@
 
 //#define debug_regs
 //#define dump
+#define LOG_LEVEL AV_LOG_DEBUG
 FILE* fp1=NULL;
 
 typedef struct _RKVDECH264Context RKVDECH264Context;
@@ -279,7 +280,7 @@ static void fill_picture_parameters(const H264Context *h, LPRKVDEC_PicParams_H26
             pp->FieldOrderCntList[i][1]   = 0;
             pp->FrameNumList[i]           = 0;
             if (j - 1 < h->short_ref_count) {
-                av_log(h, AV_LOG_WARNING, "fill_picture_parameters miss short ref");
+                av_log(h, AV_LOG_WARNING, "fill_picture_parameters miss short ref\n");
                 current_picture->f->decode_error_flags = FF_DECODE_ERROR_MISSING_REFERENCE;
             }
         }
@@ -396,7 +397,7 @@ static void fill_stream_data(AVCodecContext* avctx, const uint8_t  *buffer, uint
     memcpy(data_ptr + offset, buffer, size);
     ctx->stream_data->pkt_size += (size + sizeof(start_code));
 
-    av_log(avctx, AV_LOG_INFO, "fill_stream_data pkg_size %d size %d", ctx->stream_data->pkt_size, size);
+    av_log(avctx, LOG_LEVEL, "fill_stream_data pkg_size %d size %d.\n", ctx->stream_data->pkt_size, size);
 }
 
 
@@ -730,7 +731,7 @@ static void rkvdec_h264_free_dmabuffer(void* opaque, uint8_t *data)
     RKVDECH264Context * const ctx = opaque;
     AVFrame* buf = (AVFrame*)data;
 
-    av_log(NULL, AV_LOG_INFO, "RK_H264_DEC: rkvdec_h264_free_dmabuffer size: %d", buf->linesize[0]);
+    av_log(NULL, LOG_LEVEL, "RK_H264_DEC: rkvdec_h264_free_dmabuffer size: %d.\n", buf->linesize[0]);
     if (!ctx || !buf)
         return;
     ctx->allocator->free(ctx->allocator_ctx, buf);
@@ -742,7 +743,7 @@ static AVBufferRef* rkvdec_h264_alloc_dmabuffer(void* opaque, int size)
     RKVDECH264Context * const ctx = opaque;
     AVFrame* buf = av_frame_alloc();
 
-    av_log(NULL, AV_LOG_INFO, "RK_H264_DEC: rkvdec_h264_alloc_dmabuffer size: %d", size);
+    av_log(NULL, LOG_LEVEL, "RK_H264_DEC: rkvdec_h264_alloc_dmabuffer size: %d.\n", size);
     buf->linesize[0] = size;
     ctx->allocator->alloc(ctx->allocator_ctx, buf);
     return av_buffer_create((uint8_t*)buf, size, rkvdec_h264_free_dmabuffer, ctx, 0);
@@ -799,7 +800,7 @@ static int rkvdec_h264_start_frame(AVCodecContext          *avctx,
     RKVDECH264Context * const ctx = ff_rkvdec_get_context(avctx);
     H264Context * const h = avctx->priv_data;
 
-    av_log(avctx, AV_LOG_INFO, "RK_H264_DEC: rkvdec_h264_start_frame\n");
+    av_log(avctx, LOG_LEVEL, "RK_H264_DEC: rkvdec_h264_start_frame.\n");
     pthread_mutex_lock(&ctx->hwaccel_mutex);
     fill_picture_error_flag(h);
     fill_picture_colmv(h);
@@ -820,10 +821,10 @@ static int rkvdec_h264_end_frame(AVCodecContext *avctx)
     const H264Picture *pic = h->cur_pic_ptr;
     AVFrame* f = pic->f;
 
-    av_log(avctx, AV_LOG_INFO, "RK_H264_DEC: rkvdec_h264_end_frame\n");
+    av_log(avctx, LOG_LEVEL, "RK_H264_DEC: rkvdec_h264_end_frame.\n");
 
     if (ctx->stream_data->pkt_size <= 0) {
-        av_log(avctx, AV_LOG_WARNING, "RK_H264_DEC: rkvdec_h264_end_frame not valid stream\n");
+        av_log(avctx, AV_LOG_WARNING, "RK_H264_DEC: rkvdec_h264_end_frame not valid stream.\n");
         if (h->cur_pic_ptr && h->cur_pic_ptr->f)
             h->cur_pic_ptr->f->decode_error_flags = FF_DECODE_ERROR_INVALID_BITSTREAM;
         return 0;
@@ -842,12 +843,12 @@ static int rkvdec_h264_end_frame(AVCodecContext *avctx)
         h->setup_finished = 1;
     }
 
-    av_log(avctx, AV_LOG_INFO, "ioctl VPU_IOC_SET_REG start.");
+    av_log(avctx, LOG_LEVEL, "ioctl VPU_IOC_SET_REG start.\n");
     ret = ioctl(ctx->vpu_socket, VPU_IOC_SET_REG, &req);
     if (ret)
-        av_log(avctx, AV_LOG_ERROR, "ioctl VPU_IOC_SET_REG failed ret %d\n", ret);
+        av_log(avctx, AV_LOG_ERROR, "ioctl VPU_IOC_SET_REG failed ret %d.\n", ret);
 
-    av_log(avctx, AV_LOG_INFO, "ioctl VPU_IOC_GET_REG start.");
+    av_log(avctx, LOG_LEVEL, "ioctl VPU_IOC_GET_REG start.\n");
     ret = ioctl(ctx->vpu_socket, VPU_IOC_GET_REG, &req);
 
     if (ctx->hw_regs->swreg1_int.sw_dec_error_sta
@@ -860,7 +861,7 @@ static int rkvdec_h264_end_frame(AVCodecContext *avctx)
         ctx->err_info = 1;
     }
 
-    av_log(avctx, AV_LOG_INFO, "ioctl VPU_IOC_GET_REG success. ret: %d err: %d", ret, f->decode_error_flags);
+    av_log(avctx, LOG_LEVEL, "ioctl VPU_IOC_GET_REG success. ret: %d err: %d.\n", ret, f->decode_error_flags);
 
     pthread_mutex_unlock(&ctx->hwaccel_mutex);
 
@@ -883,7 +884,7 @@ static int rkvdec_h264_decode_slice(AVCodecContext *avctx,
                                    const uint8_t  *buffer,
                                    uint32_t        size)
 {    
-    av_log(avctx, AV_LOG_INFO, "RK_H264_DEC: rkvdec_h264_decode_slice size:%d\n", size);
+    av_log(avctx, LOG_LEVEL, "RK_H264_DEC: rkvdec_h264_decode_slice size:%d.\n", size);
     fill_stream_data(avctx, buffer, size);
     return 0;
 }
@@ -893,7 +894,7 @@ static int rkvdec_h264_context_init(AVCodecContext *avctx)
     RKVDECH264Context * const ctx = ff_rkvdec_get_context(avctx);
     int ret;
     
-    av_log(avctx, AV_LOG_INFO, "RK_H264_DEC: rkvdec_h264_context_init\n");
+    av_log(avctx, LOG_LEVEL, "RK_H264_DEC: rkvdec_h264_context_init.\n");
     ctx->allocator = &allocator_drm;
     ret = ctx->allocator->open(&ctx->allocator_ctx, 1);
     if (ret) {
@@ -960,7 +961,7 @@ static int rkvdec_h264_context_uninit(AVCodecContext *avctx)
 {
     RKVDECH264Context * const ctx = ff_rkvdec_get_context(avctx);
 
-    av_log(avctx, AV_LOG_INFO, "RK_H264_DEC: rkvdec_h264_context_uninit\n");
+    av_log(avctx, LOG_LEVEL, "RK_H264_DEC: rkvdec_h264_context_uninit.\n");
     ctx->allocator->free(ctx->allocator_ctx, ctx->syntax_data);
     ctx->allocator->free(ctx->allocator_ctx, ctx->stream_data);
 

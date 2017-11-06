@@ -43,6 +43,7 @@
 
 //#define dump
 //#define debug_regs
+#define LOG_LEVEL AV_LOG_DEBUG
 
 FILE* fp = NULL;
 
@@ -886,7 +887,7 @@ static void fill_stream_data(AVCodecContext* avctx, const uint8_t  *buffer, uint
     ctx->stream_data->pkt_size += (size + sizeof(start_code));
     ctx->slice_count++;
 
-    av_log(avctx, AV_LOG_INFO, "fill_stream_data pkg_size %d size %d", ctx->stream_data->pkt_size, size);
+    av_log(avctx, LOG_LEVEL, "fill_stream_data pkg_size %d size %d.\n", ctx->stream_data->pkt_size, size);
 }
 
 static int rkvdec_hevc_regs_gen_rps(AVCodecContext* avctx)
@@ -1233,7 +1234,7 @@ static void rkvdec_h265_free_dmabuffer(void* opaque, uint8_t *data)
     RKVDECHevcContext * const ctx = opaque;
     AVFrame* colmv = (AVFrame*)data;
 
-    av_log(NULL, AV_LOG_INFO, "RK_HEVC_DEC: rkvdec_h265_allocator_free_colmv size: %d", colmv->linesize[0]);
+    av_log(NULL, LOG_LEVEL, "RK_HEVC_DEC: rkvdec_h265_free_dmabuffer size: %d.\n", colmv->linesize[0]);
     if (!ctx || !colmv)
         return;
     ctx->allocator->free(ctx->allocator_ctx, colmv);
@@ -1245,7 +1246,7 @@ static AVBufferRef* rkvdec_h265_alloc_dmabuffer(void* opaque, int size)
     RKVDECHevcContext * const ctx = opaque;
     AVFrame* colmv = av_frame_alloc();
 
-    av_log(NULL, AV_LOG_INFO, "RK_H264_DEC: rkvdec_h265_allocator_alloc_colmv size: %d", size);
+    av_log(NULL, LOG_LEVEL, "RK_HEVC_DEC: rkvdec_h265_alloc_dmabuffer size: %d.\n", size);
     colmv->linesize[0] = size;
     ctx->allocator->alloc(ctx->allocator_ctx, colmv);
     return av_buffer_create((uint8_t*)colmv, size, rkvdec_h265_free_dmabuffer, ctx, 0);
@@ -1284,7 +1285,7 @@ static int rkvdec_hevc_start_frame(AVCodecContext          *avctx,
     HEVCContext * const h = avctx->priv_data;
     RKVDECHevcContext * const ctx = ff_rkvdec_get_context(avctx);
 
-    av_log(avctx, AV_LOG_INFO, "RK_HEVC_DEC: rkvdec_hevc_start_frame\n");
+    av_log(avctx, LOG_LEVEL, "RK_HEVC_DEC: rkvdec_hevc_start_frame\n");
     pthread_mutex_lock(&ctx->hwaccel_mutex);
     fill_picture_colmv(h);
     fill_picture_parameters(h, ctx->pic_param);
@@ -1306,7 +1307,7 @@ static int rkvdec_hevc_end_frame(AVCodecContext *avctx)
     int ret;
     int64_t t;
 
-    av_log(avctx, AV_LOG_INFO, "RK_HEVC_DEC: rkvdec_hevc_end_frame\n");
+    av_log(avctx, LOG_LEVEL, "RK_HEVC_DEC: rkvdec_hevc_end_frame.\n");
     rkvdec_hevc_regs_gen_pps(avctx);
     rkvdec_hevc_regs_gen_rps(avctx);
     rkvdec_hevc_regs_gen_reg(avctx);
@@ -1320,19 +1321,19 @@ static int rkvdec_hevc_end_frame(AVCodecContext *avctx)
 
     t = av_gettime_relative();
 
-    av_log(avctx, AV_LOG_INFO, "ioctl VPU_IOC_SET_REG start.");
+    av_log(avctx, LOG_LEVEL, "ioctl VPU_IOC_SET_REG start.\n");
     ret = ioctl(ctx->vpu_socket, VPU_IOC_SET_REG, &req);
     if (ret)
-        av_log(avctx, AV_LOG_ERROR, "ioctl VPU_IOC_SET_REG failed ret %d\n", ret);
+        av_log(avctx, AV_LOG_ERROR, "ioctl VPU_IOC_SET_REG failed ret %d.\n", ret);
 
-    av_log(avctx, AV_LOG_INFO, "ioctl VPU_IOC_GET_REG start.");
+    av_log(avctx, LOG_LEVEL, "ioctl VPU_IOC_GET_REG start.\n");
     ret = ioctl(ctx->vpu_socket, VPU_IOC_GET_REG, &req);
-    av_log(avctx, AV_LOG_INFO, "ioctl VPU_IOC_GET_REG success. cost %lld", (av_gettime_relative() - t));
+    av_log(avctx, LOG_LEVEL, "ioctl VPU_IOC_GET_REG success. cost %lld.\n", (av_gettime_relative() - t));
 
     pthread_mutex_unlock(&ctx->hwaccel_mutex);
 
     if (ret)
-        av_log(avctx, AV_LOG_ERROR, "ioctl VPU_IOC_GET_REG failed ret %d\n", ret);
+        av_log(avctx, AV_LOG_ERROR, "ioctl VPU_IOC_GET_REG failed ret %d.\n", ret);
 
 #ifdef dump_frame
 if (once-- < 0) {
@@ -1351,7 +1352,7 @@ static int rkvdec_hevc_decode_slice(AVCodecContext *avctx,
                                    const uint8_t  *buffer,
                                    uint32_t        size)
 {    
-    av_log(avctx, AV_LOG_INFO, "RK_HEVC_DEC: rkvdec_hevc_decode_slice size:%d\n", size);
+    av_log(avctx, LOG_LEVEL, "RK_HEVC_DEC: rkvdec_hevc_decode_slice size:%d\n", size);
     
     fill_rps_info(avctx, buffer, size);
     fill_stream_data(avctx, buffer, size);
@@ -1365,7 +1366,7 @@ static int rkvdec_hevc_context_init(AVCodecContext *avctx)
     RKVDECHevcContext * const ctx = ff_rkvdec_get_context(avctx);
     int ret;
 
-    av_log(avctx, AV_LOG_INFO, "RK_HEVC_DEC: rkvdec_hevc_context_init\n");
+    av_log(avctx, LOG_LEVEL, "RK_HEVC_DEC: rkvdec_hevc_context_init\n");
     ctx->allocator = &allocator_drm;
     ret = ctx->allocator->open(&ctx->allocator_ctx, 1);
     if (ret) {
@@ -1422,7 +1423,7 @@ static int rkvdec_hevc_context_uninit(AVCodecContext *avctx)
 {
     RKVDECHevcContext * const ctx = ff_rkvdec_get_context(avctx);
 
-    av_log(avctx, AV_LOG_INFO, "RK_HEVC_DEC: rkvdec_hevc_context_uninit\n");
+    av_log(avctx, LOG_LEVEL, "RK_HEVC_DEC: rkvdec_hevc_context_uninit\n");
     ctx->allocator->free(ctx->allocator_ctx, ctx->cabac_table_data);    
     ctx->allocator->free(ctx->allocator_ctx, ctx->scaling_list_data);    
     ctx->allocator->free(ctx->allocator_ctx, ctx->pps_data);
