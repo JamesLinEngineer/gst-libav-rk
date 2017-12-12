@@ -2540,6 +2540,25 @@ static int vp8_decode_mb_row_sliced(AVCodecContext *avctx, void *tdata,
     return vp78_decode_mb_row_sliced(avctx, tdata, jobnr, threadnr, IS_VP8);
 }
 
+static enum AVPixelFormat vp8_get_format(AVCodecContext *avctx)
+{
+#define HWACCEL_MAX (CONFIG_VP8_RKVDEC_HWACCEL)
+    enum AVPixelFormat pix_fmts[HWACCEL_MAX + 2], *fmt = pix_fmts;
+
+    *fmt = AV_PIX_FMT_YUV420P;
+    switch (*fmt) {
+    case AV_PIX_FMT_YUV420P:
+    case AV_PIX_FMT_YUVJ420P:
+#if CONFIG_VP8_RKVDEC_HWACCEL
+        *fmt++ = AV_PIX_FMT_NV12;
+#endif
+        break;
+    }
+    *fmt++ = AV_PIX_FMT_YUV420P;
+    *fmt = AV_PIX_FMT_NONE;
+
+    return avctx->pix_fmt = ff_get_format(avctx, pix_fmts);
+}
 
 static av_always_inline
 int vp78_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
@@ -2550,7 +2569,7 @@ int vp78_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
     enum AVDiscard skip_thresh;
     VP8Frame *av_uninit(curframe), *prev_frame;
 
-    av_assert0(avctx->pix_fmt == AV_PIX_FMT_YUVA420P || avctx->pix_fmt == AV_PIX_FMT_YUV420P);
+    av_assert0(avctx->pix_fmt == AV_PIX_FMT_YUVA420P || avctx->pix_fmt == AV_PIX_FMT_YUV420P || avctx->pix_fmt == AV_PIX_FMT_NV12);
 
     if (is_vp7)
         ret = vp7_decode_frame_header(s, avpkt->data, avpkt->size);
@@ -2633,6 +2652,26 @@ int vp78_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
 
     if (avctx->codec->update_thread_context)
         ff_thread_finish_setup(avctx);
+
+    if (avctx->hwaccel) {
+        ret = avctx->hwaccel->start_frame(avctx, avpkt->data, avpkt->size);
+        if (ret < 0)
+            return ret;
+        ret = avctx->hwaccel->decode_slice(avctx, avpkt->data, avpkt->size);
+        if (ret < 0)
+            return ret;
+        ret = avctx->hwaccel->end_frame(avctx);
+        if (ret < 0)
+            return ret;
+
+        if (!s->invisible) {
+            if ((ret = av_frame_ref(data, curframe->tf.f)) < 0)
+                return ret;
+            *got_frame = 1;
+        }
+
+        return avpkt->size;
+    }
 
     s->linesize   = curframe->tf.f->linesize[0];
     s->uvlinesize = curframe->tf.f->linesize[1];
@@ -2750,7 +2789,7 @@ int vp78_decode_init(AVCodecContext *avctx, int is_vp7)
 
     s->avctx = avctx;
     s->vp7   = avctx->codec->id == AV_CODEC_ID_VP7;
-    avctx->pix_fmt = AV_PIX_FMT_YUV420P;
+    avctx->pix_fmt = vp8_get_format(avctx);
     avctx->internal->allocate_progress = 1;
 
     ff_videodsp_init(&s->vdsp, 8);
