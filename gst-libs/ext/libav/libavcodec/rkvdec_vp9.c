@@ -1374,8 +1374,10 @@ static int rkvdec_vp9_context_init(AVCodecContext *avctx)
     }
 
     if(ioctl(ctx->vpu_socket, VPU_IOC_SET_CLIENT_TYPE, 0x1)) {
-        av_log(avctx, AV_LOG_ERROR, "failed to ioctl rkvdec.");
-        return -1;
+        if (ioctl(ctx->vpu_socket, VPU_IOC_SET_CLIENT_TYPE_U32, 0x1)) {
+            av_log(avctx, AV_LOG_ERROR, "failed to ioctl rkvdec.");
+            return -1;
+        }
     }
 
     return 0;
