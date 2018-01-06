@@ -24,7 +24,8 @@
 #endif
  
 #include <gst/video/gstvideometa.h>
- 
+#include <gst/allocators/gstdmabuf.h>
+
 #include "gstdrmbufferpool.h"
 #include "gstdrmallocator.h"
  
