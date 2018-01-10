@@ -1,3 +1,15 @@
+gst-libav-rk
+
+This module support rockchip hardware video decode acceleration includes
+h264, hevc p10, h263, mpeg2, mpeg4, vp8, vp9 on rk322x, rk332x chips.
+At the same time it's very simple the extract the FFmpeg the project with
+decode acceleration.
+
+Build:
+Configure add --enable-hwaccel=hevc_rkvdec --enable-hwaccel=hevc_rkvdec10 \
+ --enable-hwaccel=h264_rkvdec --enable-hwaccel=vp8_rkvdec --enable-hwaccel=vp9_rkvdec \
+ --enable-hwaccel=h263_rkvdec --enable-hwaccel=mpeg2video_rkvdec --enable-hwaccel=mpeg4_rkvdec
+
 gst-ffmpeg
 
 This module contains a GStreamer plugin for FFmpeg, as well as an internal
