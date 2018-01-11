@@ -256,7 +256,7 @@ static void fill_picture_parameters(const H264Context *h, LPRKVDEC_PicParams_H26
             while (!r && j < h->short_ref_count + 16)
                 r = h->long_ref[j++ - h->short_ref_count];
         }
-        if (r && r->f) {
+        if (r && r->f && r->f->buf[0]) {
             fill_picture_entry(&pp->RefFrameList[i],
                                ff_rkvdec_get_fd(r->f),
                                r->long_ref != 0);
@@ -274,6 +274,8 @@ static void fill_picture_parameters(const H264Context *h, LPRKVDEC_PicParams_H26
                 pp->UsedForReferenceFlags |= 1 << (2*i + 0);
             if (r->reference & PICT_BOTTOM_FIELD)
                 pp->UsedForReferenceFlags |= 1 << (2*i + 1);
+            if (r->field_picture)
+                pp->RefPicFiledFlags |= (1 << i);
         } else {
             pp->RefFrameList[i].bPicEntry = 0xff;
             pp->FieldOrderCntList[i][0]   = 0;
@@ -350,12 +352,6 @@ static void fill_picture_parameters(const H264Context *h, LPRKVDEC_PicParams_H26
 
     pp->curr_view_id = 0;
     pp->curr_layer_id = 0;
-    
-    for(i = 0; i < FF_ARRAY_ELEMS(pp->RefFrameList); i++) {
-        if (h->DPB[i].field_picture)
-            pp->RefPicFiledFlags |= (1 << i);
-        pp->RefPicLayerIdList[i] = 0;
-    }
 
     if (sps->scaling_matrix_present ||
         memcmp(sps->scaling_matrix4, pps->scaling_matrix4, sizeof(sps->scaling_matrix4)) ||
@@ -753,7 +749,11 @@ static int fill_picture_colmv(const H264Context* h)
 {
     RKVDECH264Context * const ctx = ff_rkvdec_get_context(h->avctx);
     H264Picture *current_picture = h->cur_pic_ptr;
-    int enable_colmv = 1;
+    int enable_colmv = 0;
+
+    // 4K use colmv separate configure to save memory
+    if (current_picture->f->width >= 3840)
+        enable_colmv = 1;
 
     if (!enable_colmv && !ctx->motion_val_pool)
         return 0;
@@ -809,6 +809,23 @@ static int rkvdec_h264_start_frame(AVCodecContext          *avctx,
     ctx->stream_data->pkt_size = 0;
 
     return 0;
+}
+
+#define AV_GET_BUFFER_FLAG_CONTAIN_MV (1 << 1)
+
+static int rkvdec_h264_alloc_frame(AVCodecContext *avctx, AVFrame *frame)
+{
+    av_assert0(frame);
+    av_assert0(frame->width);
+    av_assert0(frame->height);
+    frame->width = ALIGN(frame->width, 16);
+    frame->height = ALIGN(frame->height, 16);
+
+    // 4K use colmv separate configure to save memory
+    if (frame->width >= 3840)
+        return avctx->get_buffer2(avctx, frame, 0);
+
+    return avctx->get_buffer2(avctx, frame, AV_GET_BUFFER_FLAG_CONTAIN_MV);
 }
 
 /** End a hardware decoding based frame. */
@@ -997,6 +1014,7 @@ AVHWAccel ff_h264_rkvdec_hwaccel = {
     .type                 = AVMEDIA_TYPE_VIDEO,
     .id                   = AV_CODEC_ID_H264,
     .pix_fmt              = AV_PIX_FMT_NV12,
+    .alloc_frame          = rkvdec_h264_alloc_frame,
     .start_frame          = rkvdec_h264_start_frame,
     .end_frame            = rkvdec_h264_end_frame,
     .decode_slice         = rkvdec_h264_decode_slice,
