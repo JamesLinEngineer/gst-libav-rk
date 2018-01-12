@@ -1203,7 +1203,7 @@ static int rkvdec_hevc_regs_gen_reg(AVCodecContext *avctx)
 
     valid_ref = hw_regs->swreg78_colmv_cur_base.sw_colmv_base;
     for (i = 0; i < 16; i++) {
-        if (pp->RefColmvList[i].bPicEntry != 0xff) {
+        if (pp->RefColmvList[i].bPicEntry != 0xff && pp->RefColmvList[i].bPicEntry > 0) {
             hw_regs->swreg79_94_colmv0_15_base[i].sw_colmv_base = valid_ref = pp->RefColmvList[i].Index7Bits;
         } else {
             hw_regs->swreg79_94_colmv0_15_base[i].sw_colmv_base = valid_ref;

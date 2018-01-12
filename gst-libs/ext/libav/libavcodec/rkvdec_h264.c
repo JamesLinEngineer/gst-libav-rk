@@ -690,13 +690,11 @@ static int rkvdec_h264_regs_gen_reg(AVCodecContext *avctx)
     hw_regs->swreg43_rps_base.sw_rps_base = ff_rkvdec_get_fd(ctx->syntax_data) + ((ctx->rps_data->data[0] - ctx->syntax_data->data[0]) << 10);    
     hw_regs->swreg75_h264_errorinfo_base.sw_errorinfo_base = ff_rkvdec_get_fd(ctx->syntax_data) + ((ctx->errorinfo_data->data[0] - ctx->syntax_data->data[0]) << 10);
 
-    near_index = -1;
+    near_index = hw_regs->swreg78_colmv_cur_base.sw_colmv_base;
     for (i = 0; i < 16; i++) {
-        if (pp->RefColmvList[i].bPicEntry != 0xff) {
+        if (pp->RefColmvList[i].bPicEntry != 0xff && pp->RefColmvList[i].bPicEntry > 0) {
             ref_index  = pp->RefColmvList[i].Index7Bits;
             near_index = pp->RefColmvList[i].Index7Bits;
-        } else {
-            ref_index = (near_index < 0) ? pp->CurrMv.Index7Bits : near_index;
         }
         hw_regs->swreg79_94_colmv0_15_base[i].sw_colmv_base = ref_index;
     }
