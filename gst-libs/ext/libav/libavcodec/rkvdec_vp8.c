@@ -281,7 +281,6 @@ static void fill_picture_parameters(AVCodecContext *avctx, LPRKVDEC_PicParams_VP
         pp->stVP8Segments.segment_feature_data[1][i] = p->segmentation.filter_level[i];
         pp->intra_16x16_prob[i] = p->prob->pred16x16[i];
     }
-    rkvdec_vp8_SetPartitionOffsets(avctx);
 }
 
 static void fill_stream_data(AVCodecContext* avctx, const uint8_t  *buffer, uint32_t size)
@@ -576,6 +575,8 @@ static int rkvdec_vp8_regs_gen_reg(AVCodecContext *avctx)
     RKVDECVP8Context * const reg_cxt = ff_rkvdec_get_context(avctx);
     LPRKVDEC_PicParams_VP8 pic_param = reg_cxt->pic_param;
     LPRKVDEC_VP8_Regs vp8_hw_regs = reg_cxt->hw_regs;
+
+    rkvdec_vp8_SetPartitionOffsets(avctx);
 
     rkvdec_vp8_init_hwcfg(reg_cxt);
     mb_width = (pic_param->width + 15) >> 4;
