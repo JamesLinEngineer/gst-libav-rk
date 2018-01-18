@@ -713,12 +713,16 @@ gst_ffmpegviddec_ensure_internal_pool (GstFFMpegVidDec * ffmpegdec,
   caps = gst_video_info_to_caps (&info);
 
   if (ffmpegdec->hw_accel && GST_VIDEO_INFO_WIDTH(&info) >= 3840) {
+    gint max_buf_count = 14;
+#if LOW_MEMORY
+    max_buf_count = 11;
+#endif
     if (GST_VIDEO_INFO_FORMAT(&info) == GST_VIDEO_FORMAT_P010_10LE) {
-      gst_buffer_pool_config_set_params (config, caps, info.size, 2, 9);
+      gst_buffer_pool_config_set_params (config, caps, info.size, 2, max_buf_count - 2);
       GST_WARNING_OBJECT(ffmpegdec, "10bit!");
     }
     else
-      gst_buffer_pool_config_set_params (config, caps, info.size, 2, 11);
+      gst_buffer_pool_config_set_params (config, caps, info.size, 2, max_buf_count);
   } else 
     gst_buffer_pool_config_set_params (config, caps, info.size, 2, 0);
 
@@ -1407,12 +1411,14 @@ gst_ffmpegviddec_video_frame (GstFFMpegVidDec * ffmpegdec,
   if (len < 0 || *have_data == 0)
     goto beach;
 
+#if DROP_ERROR_FRAME
   /* drop error flag frame */
   if (ffmpegdec->picture->decode_error_flags) {
     GST_WARNING_OBJECT(ffmpegdec, "after decode: error %d to drop", ffmpegdec->picture->decode_error_flags);
     av_frame_unref(ffmpegdec->picture);
     goto beach;
   }
+#endif
 
   /* get the output picture timing info again */
   out_dframe = ffmpegdec->picture->opaque;
