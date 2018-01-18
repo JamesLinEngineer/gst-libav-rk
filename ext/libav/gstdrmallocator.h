@@ -69,7 +69,7 @@ struct _GstDRMMemory
 
   guint32 fb_id;
   guint32 gem_handle[GST_VIDEO_MAX_PLANES];
-  guint32 dma_fd;
+  gint dma_fd;
   struct drm_bo *bo;
 };
 
