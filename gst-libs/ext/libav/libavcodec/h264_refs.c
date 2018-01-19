@@ -400,6 +400,8 @@ int ff_h264_build_ref_list(H264Context *h, H264SliceContext *sl)
                 || (!FIELD_PICTURE(h) && (sl->ref_list[list][index].reference&3) != 3)) {
                 int i;
                 av_log(h->avctx, AV_LOG_ERROR, "Missing reference picture, default is %d\n", h->default_ref[list].poc);
+                if (h->avctx->hwaccel)
+                    h->cur_pic_ptr->f->decode_error_flags = FF_DECODE_ERROR_MISSING_REFERENCE;
                 for (i = 0; i < FF_ARRAY_ELEMS(h->last_pocs); i++)
                     h->last_pocs[i] = INT_MIN;
                 if (h->default_ref[list].parent
