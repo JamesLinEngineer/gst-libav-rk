@@ -1411,15 +1411,6 @@ gst_ffmpegviddec_video_frame (GstFFMpegVidDec * ffmpegdec,
   if (len < 0 || *have_data == 0)
     goto beach;
 
-#if DROP_ERROR_FRAME
-  /* drop error flag frame */
-  if (ffmpegdec->picture->decode_error_flags) {
-    GST_WARNING_OBJECT(ffmpegdec, "after decode: error %d to drop", ffmpegdec->picture->decode_error_flags);
-    av_frame_unref(ffmpegdec->picture);
-    goto beach;
-  }
-#endif
-
   /* get the output picture timing info again */
   out_dframe = ffmpegdec->picture->opaque;
   out_frame = gst_video_codec_frame_ref (out_dframe->frame);
@@ -1445,6 +1436,14 @@ gst_ffmpegviddec_video_frame (GstFFMpegVidDec * ffmpegdec,
       ffmpegdec->picture->repeat_pict);
   GST_DEBUG_OBJECT (ffmpegdec, "corrupted frame: %d",
       ! !(ffmpegdec->picture->flags & AV_FRAME_FLAG_CORRUPT));
+
+#if DROP_ERROR_FRAME
+  /* drop error flag frame */
+  if (ffmpegdec->picture->decode_error_flags) {
+    GST_WARNING_OBJECT(ffmpegdec, "after decode: error %d to drop", ffmpegdec->picture->decode_error_flags);
+    goto no_output;
+  }
+#endif
 
   if (!gst_ffmpegviddec_negotiate (ffmpegdec, ffmpegdec->context,
           ffmpegdec->picture))
@@ -1540,6 +1539,8 @@ beach:
   /* special cases */
 no_output:
   {
+    av_frame_unref (ffmpegdec->picture);
+
     GST_DEBUG_OBJECT (ffmpegdec, "no output buffer");
     gst_video_decoder_drop_frame (GST_VIDEO_DECODER (ffmpegdec), out_frame);
     len = -1;
@@ -1550,11 +1551,11 @@ negotiation_error:
   {
     if (GST_PAD_IS_FLUSHING (GST_VIDEO_DECODER_SRC_PAD (ffmpegdec))) {
       *ret = GST_FLOW_FLUSHING;
-      goto beach;
+      goto no_output;
     }
     GST_WARNING_OBJECT (ffmpegdec, "Error negotiating format");
     *ret = GST_FLOW_NOT_NEGOTIATED;
-    goto beach;
+    goto no_output;
   }
 }
 
