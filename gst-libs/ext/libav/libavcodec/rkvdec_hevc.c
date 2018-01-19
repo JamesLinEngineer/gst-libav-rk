@@ -874,6 +874,7 @@ static void fill_stream_data(AVCodecContext* avctx, const uint8_t  *buffer, uint
         AVFrame* new_pkt = av_frame_alloc();
         new_pkt->linesize[0] = offset + size + DATA_SIZE;
         ctx->allocator->alloc(ctx->allocator_ctx, new_pkt);
+        new_pkt->pkt_size = offset;
         memcpy(new_pkt->data[0], ctx->stream_data->data[0], ctx->stream_data->pkt_size);
         ctx->allocator->free(ctx->allocator_ctx, ctx->stream_data);
         memcpy(ctx->stream_data, new_pkt, sizeof(AVFrame));
