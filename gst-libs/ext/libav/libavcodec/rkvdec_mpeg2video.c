@@ -278,7 +278,7 @@ static int rkvdec_mpeg2video_regs_gen_reg(AVCodecContext *avctx)
     }
 
     if (h->last_picture_ptr) {
-        if (h->last_picture_ptr->f->decode_error_flags && h->pict_type!=AV_PICTURE_TYPE_I) {
+        if (h->last_picture_ptr->f->decode_error_flags && h->pict_type != AV_PICTURE_TYPE_I) {
             av_log(avctx, AV_LOG_INFO, "fill_picture_parameters missing reference");
             h->current_picture_ptr->f->decode_error_flags = FF_DECODE_ERROR_MISSING_REFERENCE;
         }
@@ -356,6 +356,8 @@ static int rkvdec_mpeg2video_end_frame(AVCodecContext *avctx)
 {
     RKVDECMpeg2videoContext * const ctx = ff_rkvdec_get_context(avctx);
     RKVDECMpeg2videoHwReq req;
+    Mpeg1Context *s  = avctx->priv_data;
+    MpegEncContext *h = &s->mpeg_enc_ctx
     int ret;
 
     av_log(avctx, AV_LOG_INFO, "RK_Mpeg2video_DEC: rkvdec_Mpeg2video_end_frame\n");
@@ -372,6 +374,10 @@ static int rkvdec_mpeg2video_end_frame(AVCodecContext *avctx)
     av_log(avctx, AV_LOG_INFO, "ioctl VPU_IOC_GET_REG start.");
     ret = ioctl(ctx->vpu_socket, VPU_IOC_GET_REG, &req);
     av_log(avctx, AV_LOG_INFO, "ioctl VPU_IOC_GET_REG success.");
+
+    if (ctx->hw_regs->interrupt.sw_dec_error_int) {
+        h->current_picture_ptr->f->decode_error_flags = FF_DECODE_ERROR_INVALID_BITSTREAM;
+    }
     if (ret)
         av_log(avctx, AV_LOG_ERROR, "ioctl VPU_IOC_GET_REG failed ret %d\n", ret);
 
