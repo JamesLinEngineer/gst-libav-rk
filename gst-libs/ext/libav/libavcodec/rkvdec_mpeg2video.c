@@ -357,7 +357,7 @@ static int rkvdec_mpeg2video_end_frame(AVCodecContext *avctx)
     RKVDECMpeg2videoContext * const ctx = ff_rkvdec_get_context(avctx);
     RKVDECMpeg2videoHwReq req;
     Mpeg1Context *s  = avctx->priv_data;
-    MpegEncContext *h = &s->mpeg_enc_ctx
+    MpegEncContext *h = &s->mpeg_enc_ctx;
     int ret;
 
     av_log(avctx, AV_LOG_INFO, "RK_Mpeg2video_DEC: rkvdec_Mpeg2video_end_frame\n");
