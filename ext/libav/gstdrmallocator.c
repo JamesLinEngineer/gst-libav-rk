@@ -346,13 +346,13 @@ gst_drm_allocator_alloc (GstAllocator * allocator, GstVideoInfo * vinfo)
     vinfo->offset[1] = offsets[1];
   }
 
-  ret = drmModeAddFB2 (alloc->priv->device_fd, w, h, fmt, bo_handles, pitches,
+  /*ret = drmModeAddFB2 (alloc->priv->device_fd, w, h, fmt, bo_handles, pitches,
       offsets, &drmmem->fb_id, 0);
   if (ret < 0) {
     GST_ERROR_OBJECT (alloc, "drmModeAddFB2 failed: %s (%d)",
       strerror (-ret), ret);
     goto create_failed;
-  }
+  }*/
 
   mem->maxsize = mem->size = drmmem->bo->size;
 
