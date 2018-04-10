@@ -398,7 +398,7 @@ static int rkvdec_mpeg4_start_frame(AVCodecContext          *avctx,
                                   av_unused const uint8_t *buffer,
                                   av_unused uint32_t       size)
 {
-    RKVDECMpeg4Context * const ctx = ff_rkvdec_get_context(avctx);    
+    RKVDECMpeg4Context * const ctx = ff_rkvdec_get_context(avctx);
     pthread_mutex_lock(&ctx->hwaccel_mutex);
     Mpeg4DecContext * const ctxf = avctx->priv_data;
     fill_picture_parameters(ctxf, ctx->pic_param);
@@ -458,7 +458,13 @@ static int rkvdec_mpeg4_decode_slice(AVCodecContext *avctx,
 static int rkvdec_mpeg4_context_init(AVCodecContext *avctx)
 {
     RKVDECMpeg4Context * const ctx = ff_rkvdec_get_context(avctx);
+    Mpeg4DecContext * const ctxf = avctx->priv_data;
     int ret;
+
+    if (ctxf->divx_version > 0) {
+        av_log(avctx, AV_LOG_WARNING, "divx version %d > 0\n", ctxf->divx_version);
+        return -1;
+    }
     
     ctx->allocator = &allocator_drm;
     ret = ctx->allocator->open(&ctx->allocator_ctx, 1);
