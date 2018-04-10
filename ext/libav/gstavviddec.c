@@ -1420,8 +1420,8 @@ gst_ffmpegviddec_video_frame (GstFFMpegVidDec * ffmpegdec,
   gst_buffer_replace (&out_dframe->buffer, NULL);
 
   GST_DEBUG_OBJECT (ffmpegdec,
-      "pts %" G_GUINT64_FORMAT " duration %" G_GUINT64_FORMAT,
-      out_frame->pts, out_frame->duration);
+      "pts %" G_GUINT64_FORMAT " dts % " G_GUINT64_FORMAT " duration %" G_GUINT64_FORMAT,
+      out_frame->pts, out_frame->dts, out_frame->duration);
   GST_DEBUG_OBJECT (ffmpegdec, "picture: pts %" G_GUINT64_FORMAT,
       (guint64) ffmpegdec->picture->pts);
   GST_DEBUG_OBJECT (ffmpegdec, "picture: num %d",
@@ -1436,6 +1436,9 @@ gst_ffmpegviddec_video_frame (GstFFMpegVidDec * ffmpegdec,
       ffmpegdec->picture->repeat_pict);
   GST_DEBUG_OBJECT (ffmpegdec, "corrupted frame: %d",
       ! !(ffmpegdec->picture->flags & AV_FRAME_FLAG_CORRUPT));
+
+  if (!GST_CLOCK_TIME_IS_VALID(out_frame->pts))
+    out_frame->pts = out_frame->dts;
 
 #if DROP_ERROR_FRAME
   /* drop error flag frame */
