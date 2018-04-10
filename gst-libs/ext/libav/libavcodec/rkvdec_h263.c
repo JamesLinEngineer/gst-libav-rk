@@ -330,15 +330,19 @@ static int rkvdec_h263_context_init(AVCodecContext *avctx)
 {
     RKVDECH263Context * const ctx = ff_rkvdec_get_context(avctx);
     int ret;
-    
+
     av_log(avctx, AV_LOG_INFO, "RK_H263_DEC: rkvdec_h263_context_init\n");
+    if (avctx->width < 720) {
+        av_log(avctx, AV_LOG_WARNING, "width < 720\n");
+        return -1;
+    }
+
     ctx->allocator = &allocator_drm;
     ret = ctx->allocator->open(&ctx->allocator_ctx, 1);
     if (ret) {
         av_log(avctx, AV_LOG_ERROR, "failed to open allocator.");
         return -1;
     }
-
 
     ctx->hw_regs = av_mallocz(sizeof(RKVDEC_H263_Regs));
     ctx->pic_param = av_mallocz(sizeof(RKVDEC_PicParams_H263));  
