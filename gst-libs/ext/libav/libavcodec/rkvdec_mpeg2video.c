@@ -428,8 +428,11 @@ static int rkvdec_mpeg2video_context_init(AVCodecContext *avctx)
 
     ctx->pic_param->qp_tab = av_mallocz(256);
 
-    if (ctx->vpu_socket <= 0)
-        ctx->vpu_socket = open(name_rkvdec, O_RDWR);
+    for (int i = 0; i <  FF_ARRAY_ELEMS(name_rkvdecs); i++) {
+        ctx->vpu_socket = open(name_rkvdecs[i], O_RDWR);
+        if (ctx->vpu_socket > 0)
+            break;
+    }
 
     if (ctx->vpu_socket < 0) {
         av_log(avctx, AV_LOG_ERROR, "failed to open rkvdec.");

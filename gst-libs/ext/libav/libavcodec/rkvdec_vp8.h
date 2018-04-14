@@ -19,7 +19,7 @@
  *
  */
 
-static const char *name_rkvdec = "/dev/vpu-service";
+static const char *name_rkvdecs[] = {"/dev/vpu-service", "/dev/vpu_service"};
 
 #define VPU_IOC_MAGIC                       'l'
 
