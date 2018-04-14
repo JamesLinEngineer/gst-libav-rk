@@ -182,7 +182,7 @@ struct _RKVDEC_PicParams_H264 {
 };
 
 
-#define RKVDECH264_CABAC_TAB_SIZE        (3680 + 128)        /* bytes */
+#define RKVDECH264_CABAC_TAB_SIZE        (14816 + 128)        /* bytes */
 #define RKVDECH264_SPSPPS_SIZE           (256*32 + 128)      /* bytes */
 #define RKVDECH264_RPS_SIZE              (128 + 128)         /* bytes */
 #define RKVDECH264_SCALING_LIST_SIZE     (6*16+2*64 + 128)   /* bytes */
@@ -850,6 +850,8 @@ static int rkvdec_h264_end_frame(AVCodecContext *avctx)
     rkvdec_h264_regs_gen_rps(avctx);
     rkvdec_h264_regs_gen_scanlist(avctx);
     rkvdec_h264_regs_gen_reg(avctx);
+
+    ctx->stream_data->pkt_size = 0;
 
     req.req = (unsigned int*)ctx->hw_regs;
     req.size = ctx->motion_val_pool ? 95 * sizeof(unsigned int) : 78 * sizeof(unsigned int);
