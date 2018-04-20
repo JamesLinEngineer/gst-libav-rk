@@ -1029,8 +1029,8 @@ gst_ffmpegviddec_update_par (GstFFMpegVidDec * ffmpegdec,
   if (decoder_num == decoder_denom && demuxer_num != demuxer_denom)
     goto use_demuxer_par;
 
-  /* Both PARs are non-1:1, so use the PAR provided by the demuxer */
-  goto use_demuxer_par;
+  /* Both PARs are non-1:1, so use the PAR provided by the decoder */
+  goto use_decoder_par;
 
 use_decoder_par:
   {
