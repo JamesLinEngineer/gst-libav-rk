@@ -33,6 +33,7 @@
 
 //#define debug_regs
 //#define dump
+//#define dump_pps 1
 #define LOG_LEVEL AV_LOG_DEBUG
 FILE* fp1=NULL;
 
@@ -323,11 +324,11 @@ static void fill_picture_parameters(const H264Context *h, LPRKVDEC_PicParams_H26
     pp->CurrFieldOrderCnt[1] = 0;
     if ((h->picture_structure & PICT_BOTTOM_FIELD) && current_picture->field_poc[1] != INT_MAX)
         pp->CurrFieldOrderCnt[1] = current_picture->field_poc[1];
-    pp->pic_init_qs_minus26           = pps->init_qs - 26;
     pp->chroma_qp_index_offset        = pps->chroma_qp_index_offset[0];
     pp->second_chroma_qp_index_offset = pps->chroma_qp_index_offset[1];
     pp->ContinuationFlag              = 1;
-    pp->pic_init_qp_minus26           = pps->init_qp - 26;
+    pp->pic_init_qp_minus26           = pps->init_qp - 26 - 6 * (sps->bit_depth_luma - 8);
+    pp->pic_init_qs_minus26           = pps->init_qs - 26 - 6 * (sps->bit_depth_luma - 8);
     pp->num_ref_idx_l0_active_minus1  = pps->ref_count[0] - 1;
     pp->num_ref_idx_l1_active_minus1  = pps->ref_count[1] - 1;
     pp->Reserved8BitsA                = 0;
@@ -410,7 +411,7 @@ static int rkvdec_h264_regs_gen_pps(AVCodecContext* avctx)
 
     PutBitContext64 bp;
     init_put_bits_a64(&bp, pps_data, 32);
-    
+
     /* sps */
     put_bits_a64(&bp, 4, -1);
     put_bits_a64(&bp, 8, -1);
@@ -628,6 +629,7 @@ static int rkvdec_h264_regs_gen_reg(AVCodecContext *avctx)
     H264Picture * const pic = h->cur_pic_ptr;
     unsigned int mb_width, mb_height, mv_size;
     int i, ref_index = -1, near_index = -1;
+    int stride_align = (pp->bit_depth_luma_minus8 + 8) > 8 ? 256 : 16;
 
     memset(hw_regs, 0, sizeof(RKVDEC_H264_Regs));
 
@@ -635,10 +637,10 @@ static int rkvdec_h264_regs_gen_reg(AVCodecContext *avctx)
     hw_regs->swreg5_stream_rlc_len.sw_stream_len = ALIGN(ctx->stream_data->pkt_size, 16);
     hw_regs->swreg3_picpar.sw_slice_num_lowbits = 0x7ff;
     hw_regs->swreg3_picpar.sw_slice_num_highbit = 1;
-    hw_regs->swreg3_picpar.sw_y_hor_virstride = ALIGN(pic->f->width, 16) / 16;
-    hw_regs->swreg3_picpar.sw_uv_hor_virstride =  ALIGN(pic->f->width, 16) / 16;
-    hw_regs->swreg8_y_virstride.sw_y_virstride = ALIGN(ALIGN(pic->f->width, 16) * ALIGN(pic->f->height, 16), 16) / 16;
-    hw_regs->swreg9_yuv_virstride.sw_yuv_virstride = ALIGN(ALIGN(pic->f->width, 16) * ALIGN(pic->f->height, 16) * 3 / 2, 16) / 16;
+    hw_regs->swreg3_picpar.sw_y_hor_virstride = ALIGN(pic->f->width * (pp->bit_depth_luma_minus8 + 8) / 8, stride_align) / 16;
+    hw_regs->swreg3_picpar.sw_uv_hor_virstride =  ALIGN(pic->f->width * (pp->bit_depth_chroma_minus8 + 8) / 8, stride_align) / 16;
+    hw_regs->swreg8_y_virstride.sw_y_virstride = ALIGN(ALIGN(pic->f->width * (pp->bit_depth_luma_minus8 + 8) / 8, stride_align) * ALIGN(pic->f->height, 16), 16) / 16;
+    hw_regs->swreg9_yuv_virstride.sw_yuv_virstride = ALIGN(ALIGN(pic->f->width * (pp->bit_depth_chroma_minus8 + 8) / 8, stride_align) * ALIGN(pic->f->height, 16) * 3 / 2, 16) / 16;
     mb_width = pp->wFrameWidthInMbsMinus1 + 1;
     mb_height = (2 - pp->frame_mbs_only_flag) * (pp->wFrameHeightInMbsMinus1 + 1);
     mv_size = mb_width * mb_height * 8;
@@ -1015,6 +1017,22 @@ AVHWAccel ff_h264_rkvdec_hwaccel = {
     .type                 = AVMEDIA_TYPE_VIDEO,
     .id                   = AV_CODEC_ID_H264,
     .pix_fmt              = AV_PIX_FMT_NV12,
+    .alloc_frame          = rkvdec_h264_alloc_frame,
+    .start_frame          = rkvdec_h264_start_frame,
+    .end_frame            = rkvdec_h264_end_frame,
+    .decode_slice         = rkvdec_h264_decode_slice,
+    .init                 = rkvdec_h264_context_init,
+    .uninit               = rkvdec_h264_context_uninit,
+    .priv_data_size       = sizeof(RKVDECH264Context),
+    .frame_priv_data_size = sizeof(RKVDEC_FrameData_H264),
+    .caps_internal        = HWACCEL_CAP_ASYNC_SAFE | HWACCEL_CAP_THREAD_SAFE,
+};
+
+AVHWAccel ff_h264_rkvdec10_hwaccel = {
+    .name                 = "h264_rkvdec10",
+    .type                 = AVMEDIA_TYPE_VIDEO,
+    .id                   = AV_CODEC_ID_H264,
+    .pix_fmt              = AV_PIX_FMT_P010LE,
     .alloc_frame          = rkvdec_h264_alloc_frame,
     .start_frame          = rkvdec_h264_start_frame,
     .end_frame            = rkvdec_h264_end_frame,
