@@ -785,8 +785,12 @@ static enum AVPixelFormat get_pixel_format(H264Context *h, int force_callback)
                 *fmt++ = AV_PIX_FMT_YUV444P10;
         } else if (CHROMA422(h))
             *fmt++ = AV_PIX_FMT_YUV422P10;
-        else
+        else {
+#if CONFIG_H264_RKVDEC_HWACCEL
+            *fmt++ = AV_PIX_FMT_P010LE;
+#endif
             *fmt++ = AV_PIX_FMT_YUV420P10;
+        }
         break;
     case 12:
         if (CHROMA444(h)) {
