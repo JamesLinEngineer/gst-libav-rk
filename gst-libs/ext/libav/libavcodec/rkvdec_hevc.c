@@ -1459,12 +1459,22 @@ static int rkvdec_hevc_context_uninit(AVCodecContext *avctx)
     return 0;
 }
 
+static int rkvdec_hevc_alloc_frame(AVCodecContext *avctx, AVFrame *frame)
+{
+    av_assert0(frame);
+    av_assert0(frame->width);
+    av_assert0(frame->height);
+    frame->width = ALIGN(frame->width, 256);
+    return avctx->get_buffer2(avctx, frame, 0);
+}
+
 AVHWAccel ff_hevc_rkvdec_hwaccel = {
     .name                 = "hevc_rkvdec",
     .type                 = AVMEDIA_TYPE_VIDEO,
     .id                   = AV_CODEC_ID_HEVC,
     .pix_fmt              = AV_PIX_FMT_NV12,
     .start_frame          = rkvdec_hevc_start_frame,
+    .alloc_frame          = rkvdec_hevc_alloc_frame,
     .end_frame            = rkvdec_hevc_end_frame,
     .decode_slice         = rkvdec_hevc_decode_slice,
     .init                 = rkvdec_hevc_context_init,
