@@ -179,6 +179,20 @@ no_memory:
   }
 }
 
+static GstFlowReturn
+gst_drm_buffer_pool_acquire_buffer (GstBufferPool * bpool,
+    GstBuffer ** buffer, GstBufferPoolAcquireParams * params)
+{
+  GstDRMBufferPool *pool;
+  pool = GST_DRM_BUFFER_POOL(bpool);
+
+  g_atomic_int_inc (&pool->priv->outstanding);
+  GST_DEBUG_OBJECT(pool, "Drm buffer pool acquire buffer %d\n", 
+    g_atomic_int_get (&pool->priv->outstanding));
+  return GST_BUFFER_POOL_CLASS (parent_class)->acquire_buffer(bpool, buffer, params);
+}
+
+
 static void
 gst_drm_buffer_pool_release_buffer (GstBufferPool * bpool,
     GstBuffer * buffer)
@@ -187,7 +201,10 @@ gst_drm_buffer_pool_release_buffer (GstBufferPool * bpool,
 
   pool = GST_DRM_BUFFER_POOL(bpool);
 
-  GST_DEBUG_OBJECT(pool, "Drm buffer pool release buffer");
+  g_atomic_int_dec_and_test(&pool->priv->outstanding);
+
+  GST_DEBUG_OBJECT(pool, "Drm buffer pool release buffer %d\n", 
+    g_atomic_int_get (&pool->priv->outstanding));
 
   return GST_BUFFER_POOL_CLASS (parent_class)->release_buffer (bpool, buffer);
 }
@@ -211,10 +228,20 @@ gst_drm_buffer_pool_finalize (GObject * object)
 }
 
 static void
+gst_drm_buffer_pool_flush_start (GstBufferPool * pool)
+{
+  GstDRMBufferPool *vpool;
+  vpool = GST_DRM_BUFFER_POOL_CAST (pool);
+  GST_DEBUG_OBJECT(vpool, "gst_drm_buffer_pool_flush_start outstanding %d\n",
+    g_atomic_int_get (&vpool->priv->outstanding));
+}
+
+static void
 gst_drm_buffer_pool_init (GstDRMBufferPool * pool)
 {
   pool->priv = gst_drm_buffer_pool_get_instance_private (pool);
   pool->priv->fd = -1;
+  pool->priv->outstanding = 0;
 }
 
 static void
@@ -231,7 +258,9 @@ gst_drm_buffer_pool_class_init (GstDRMBufferPoolClass * klass)
   gstbufferpool_class->get_options = gst_drm_buffer_pool_get_options;
   gstbufferpool_class->set_config = gst_drm_buffer_pool_set_config;
   gstbufferpool_class->alloc_buffer = gst_drm_buffer_pool_alloc_buffer;
+  gstbufferpool_class->acquire_buffer = gst_drm_buffer_pool_acquire_buffer;
   gstbufferpool_class->release_buffer = gst_drm_buffer_pool_release_buffer;
+  gstbufferpool_class->flush_start = gst_drm_buffer_pool_flush_start;
 }
 
 GstBufferPool *
@@ -241,6 +270,7 @@ gst_drm_buffer_pool_new (guint flag)
 
   pool = g_object_new (GST_TYPE_DRM_BUFFER_POOL, NULL);
   pool->priv->vallocator = gst_drm_allocator_new(0);
+  pool->priv->outstanding = 0;
   if (flag)
     g_object_set(G_OBJECT(pool->priv->vallocator),
                     "alloc-scale", 1.4,

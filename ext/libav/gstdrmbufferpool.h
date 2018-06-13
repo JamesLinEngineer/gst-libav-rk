@@ -66,6 +66,7 @@ struct _GstDRMBufferPoolPrivate
   GstAllocator *allocator;
   GstAllocator *vallocator;
   gboolean add_videometa;
+  gint outstanding;
 };
 
 
