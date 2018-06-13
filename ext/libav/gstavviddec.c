@@ -920,6 +920,7 @@ map_failed:
         ("Cannot access memory for read and write operation."),
         ("The video memory allocated from downstream pool could not mapped for"
             "read and write."));
+    gst_buffer_replace (&dframe->buffer, NULL);
     return -1;
   }
 duplicate_frame:
