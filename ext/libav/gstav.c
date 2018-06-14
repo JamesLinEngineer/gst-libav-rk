@@ -158,6 +158,7 @@ plugin_init (GstPlugin * plugin)
   gst_ffmpegvidenc_register (plugin);
   gst_ffmpegauddec_register (plugin);
   gst_ffmpegviddec_register (plugin);
+  gst_ffmpegsubdec_register (plugin);
   gst_ffmpegdemux_register (plugin);
   gst_ffmpegmux_register (plugin);
   gst_ffmpegdeinterlace_register (plugin);

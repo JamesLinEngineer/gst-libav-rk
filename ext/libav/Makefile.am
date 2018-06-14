@@ -20,6 +20,7 @@ libgstlibav_la_SOURCES = gstav.c	\
 			  gstavvidenc.c	\
 			  gstavauddec.c	\
 			  gstavviddec.c	\
+			  gstavsubdec.c \
 			  gstavcfg.c	\
 			  gstavdemux.c	\
 			  gstavmux.c    \

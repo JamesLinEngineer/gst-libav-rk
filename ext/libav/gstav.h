@@ -43,6 +43,7 @@ extern gboolean gst_ffmpegauddec_register (GstPlugin * plugin);
 extern gboolean gst_ffmpegviddec_register (GstPlugin * plugin);
 extern gboolean gst_ffmpegaudenc_register (GstPlugin * plugin);
 extern gboolean gst_ffmpegvidenc_register (GstPlugin * plugin);
+extern gboolean gst_ffmpegsubdec_register (GstPlugin * plugin);
 extern gboolean gst_ffmpegmux_register (GstPlugin * plugin);
 #if 0
 extern gboolean gst_ffmpegscale_register (GstPlugin * plugin);
