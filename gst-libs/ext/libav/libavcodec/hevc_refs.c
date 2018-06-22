@@ -450,7 +450,8 @@ static int add_candidate_ref(HEVCContext *s, RefPicList *list,
             return AVERROR(ENOMEM);
         if (s->avctx->hwaccel && ref->frame) {
             ref->frame->decode_error_flags = FF_DECODE_ERROR_INVALID_BITSTREAM;
-            s->ref->frame->decode_error_flags = FF_DECODE_ERROR_MISSING_REFERENCE;
+            if(!s->frame->key_frame && list != &s->rps[LT_FOLL] && list != &s->rps[ST_FOLL])
+                 s->ref->frame->decode_error_flags = FF_DECODE_ERROR_MISSING_REFERENCE;
         }
     }
 
