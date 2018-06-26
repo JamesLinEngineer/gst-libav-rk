@@ -443,7 +443,7 @@ static int add_candidate_ref(HEVCContext *s, RefPicList *list,
         return AVERROR_INVALIDDATA;
 
     if (!ref) {
-        if (s->avctx->hwaccel && list->nb_refs > 1)
+        if (s->avctx->hwaccel && list->nb_refs > 4)
             return AVERROR_INVALIDDATA;
         ref = generate_missing_ref(s, poc);
         if (!ref)
