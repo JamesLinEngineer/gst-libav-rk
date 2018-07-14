@@ -93,7 +93,7 @@ int ff_ass_subtitle_header_default(AVCodecContext *avctx)
 char *ff_ass_get_dialog(int readorder, int layer, const char *style,
                         const char *speaker, const char *text)
 {
-    return av_asprintf("%d,%d,%s,%s,0,0,0,,%s",
+    return av_asprintf("%d,%d,%s,%s %s",
                        readorder, layer, style ? style : "Default",
                        speaker ? speaker : "", text);
 }

@@ -37,6 +37,8 @@
 #define gst_ffmpeg_sub_dec_parent_class parent_class
 G_DEFINE_TYPE (GstFFMpegSubDec, gst_ffmpeg_sub_dec, GST_TYPE_ELEMENT);
 
+#define MAX_SUBTITLE_LENGTH 512
+
 static void gst_ffmpeg_sub_dec_base_init(GstFFMpegSubDecClass * klass)
 {
   GstElementClass *element_class = GST_ELEMENT_CLASS (klass);
@@ -72,6 +74,9 @@ static void gst_ffmpeg_sub_dec_base_init(GstFFMpegSubDecClass * klass)
     break;
   case AV_CODEC_ID_XSUB:
     sinkcaps = gst_caps_new_empty_simple ("subpicture/x-xsub");
+    break;
+  case AV_CODEC_ID_TEXT:
+    sinkcaps = gst_caps_new_empty_simple ("text/x-raw");
     break;
   default:
     sinkcaps = gst_caps_from_string ("unknown/unknown");
@@ -216,6 +221,157 @@ static void gst_ffmpegsubdec_picture(GstFFMpegSubDec *ffmpegdec, AVSubtitle* sub
   }
 }
 
+
+static void gst_ffmpegsubdec_text(GstFFMpegSubDec *ffmpegdec, AVSubtitle* sub, GstClockTime ts, GstClockTime dur)
+{
+    gint i, j, w, h, size;
+    guint8 *data;
+    guint8 *ptr;
+    GstBuffer *buffer, *buffernull;
+    if (sub && sub->num_rects) {
+        for (i = 0; i < sub->num_rects; i++) {
+            w = sub->rects[i]->w;
+            h = sub->rects[i]->h;
+            size = MAX_SUBTITLE_LENGTH;
+            if( sub->rects[i]->ass!= NULL){
+             data = sub->rects[i]->ass;
+             char * rawContent = sub->rects[i]->ass;
+             ptr = g_malloc(size);
+             int hour1, hour2, min1, min2, sec1, sec2, msec1, msec2, index;
+             char* txtContent[MAX_SUBTITLE_LENGTH]= {0};
+             if(strlen(rawContent)>= (MAX_SUBTITLE_LENGTH-1)){
+                 GST_ERROR("invalid rawContent; Too long");
+             }
+             if(sscanf(rawContent, "Dialogue: %2d,%02d:%02d:%02d.%02d,%02d:%02d:%02d.%02d,Default,%[^\r\n]",
+                       &index, &hour1, &min1, &sec1, &msec1, &hour2, &min2, &sec2, &msec2, txtContent) != 10) {
+                    GST_ERROR(" ERROR_MALFORMED; txtContent:%s", txtContent);
+              }
+             int  txtLen = strlen(txtContent);
+             if(txtLen <= 0) {
+                GST_ERROR("invalid rawContent;NULL");
+             }
+             filterSpecialChar(txtContent);
+             strcpy(ptr, txtContent);
+            GST_ERROR(">>>>>>>>>>>>>>> txtContent:%s", txtContent);
+            buffer = gst_buffer_new_allocate (NULL, size, NULL);
+            gst_buffer_fill(buffer, 0, ptr, size);
+            gst_buffer_add_video_meta (buffer, GST_VIDEO_FRAME_FLAG_NONE, GST_VIDEO_FORMAT_NV21, w, h);
+
+            GST_BUFFER_PTS(buffer) = ts;
+            GST_BUFFER_DURATION(buffer) = dur;
+
+            GST_ERROR_OBJECT(ffmpegdec, " Have text w:%d, h:%d, ts %"
+            GST_TIME_FORMAT ", dur %" G_GINT64_FORMAT, w, h, GST_TIME_ARGS (ts), GST_BUFFER_DURATION (buffer));
+
+            gst_pad_push(ffmpegdec->srcpad, buffer);
+            g_free(ptr);
+
+            push_void_buffer(ffmpegdec, ts+dur, 0);
+               
+            }
+          }
+        }else {
+	      buffer = gst_buffer_new_allocate (NULL, 0, NULL);
+	      gst_buffer_add_video_meta (buffer, GST_VIDEO_FRAME_FLAG_NONE,
+	         GST_VIDEO_FORMAT_NV21, 0, 0);
+	      GST_BUFFER_PTS(buffer) = ts;
+	      GST_BUFFER_DURATION(buffer) = dur;
+	      gst_pad_push(ffmpegdec->srcpad, buffer);
+
+	      GST_DEBUG_OBJECT(ffmpegdec, "Have empty picture ts %"
+	         GST_TIME_FORMAT ", dur %" G_GINT64_FORMAT, GST_TIME_ARGS (ts), GST_BUFFER_DURATION (buffer));
+      }
+}
+
+void push_void_buffer(GstFFMpegSubDec *ffmpegdec,GstClockTime ts, GstClockTime dur)
+{
+
+     GstBuffer *buffer;
+     buffer = gst_buffer_new_allocate (NULL, 0, NULL);
+     gst_buffer_add_video_meta (buffer, GST_VIDEO_FRAME_FLAG_NONE,
+         GST_VIDEO_FORMAT_NV21 , 0, 0);
+     GST_BUFFER_PTS(buffer) = ts;
+     GST_BUFFER_DURATION(buffer) = dur;
+     gst_pad_push(ffmpegdec->srcpad, buffer);
+
+     GST_ERROR_OBJECT(ffmpegdec, "Text Have empty picture ts %"
+         GST_TIME_FORMAT ", dur %" G_GINT64_FORMAT, GST_TIME_ARGS (ts), GST_BUFFER_DURATION (buffer));    
+
+}
+
+void filterSpecialChar(char* rawContent)
+{
+    int i;
+    if(NULL != rawContent && strlen(rawContent) > 0) {
+        for (i =0; i <strlen(rawContent) - 1; i++) {
+            if ((rawContent + i) && (*(rawContent + i) == 0x5C)) {
+                if (((*(rawContent + i + 1) == 0x6E) ||
+                        (*(rawContent + i + 1) == 0x4E))) {
+                    //replace "\n" or "\N" with "\r\n"
+                    *(rawContent + i + 0) = 0x0D;
+                    *(rawContent + i + 1) = 0x0A;
+                } else if (*(rawContent + i + 1) == 0x68) {
+                    // replace "\h" with space
+                    *(rawContent + i + 0) = 0x20;
+                    *(rawContent + i + 1) = 0x20;
+                }
+            }
+        }
+    }
+
+    int error = 0;
+    do {
+        error = filterSpecialTag(rawContent);
+    } while(0 == error);
+}
+
+int  filterSpecialTag(char* rawContent)
+{
+    int pattern[3] = {0};
+    int len,idx,i;
+    len = idx = i =0;
+    pattern[0] = pattern[1] = pattern[2] = -1;
+    if((NULL!=rawContent)||(strlen(rawContent)>0)) {
+        len = strlen(rawContent);
+        for (i =0; i < len; i++) {
+            if(rawContent[i]=='{') {
+                pattern[0] = i;
+            }
+            if(rawContent[i]=='\\') {
+                if((-1 != pattern[0])&&(i==(pattern[0]+1))) {
+                    pattern[1] = i;
+                    //ALOGE("filterSpecialTag pattern[1] = %d", pattern[1]);
+                } else {
+                    pattern[0] = -1;
+                }
+            }
+            if((rawContent[i]=='}')&&(-1 != pattern[0])&&(-1 != pattern[1])) {
+                pattern[2] = i;
+                //ALOGE("filterSpecialTag pattern[2] = %d", pattern[2]);
+                break;
+            }
+        }
+    }
+    if((pattern[0] >= 0)&&(pattern[2] > 0)&&(len>0)) {
+        //ALOGE("filterSpecialTag pattern[0] =%d; pattern[2]=%d; rawContent = %s", pattern[0], pattern[2], rawContent);
+        char newContent[MAX_SUBTITLE_LENGTH]= {0};
+        memset(newContent, 0, MAX_SUBTITLE_LENGTH);
+        for(i = 0; i < pattern[0]; i++) {
+            newContent[idx] = rawContent[i];
+            idx++;
+        }
+
+        for(i = pattern[2]+1; i < len; i++) {
+            newContent[idx] = rawContent[i];
+            idx++;
+        }
+        snprintf(rawContent, MAX_SUBTITLE_LENGTH, "%s", newContent);
+        return 0;
+    }
+    return -1;
+}
+
+
 static GstFlowReturn
 gst_ffmpegsubdec_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuf)
 {
@@ -269,6 +425,15 @@ gst_ffmpegsubdec_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuf)
         case AV_CODEC_ID_DVD_SUBTITLE:
         case AV_CODEC_ID_XSUB:
           gst_ffmpegsubdec_picture(ffmpegdec, ffmpegdec->frame, 
+            GST_BUFFER_TIMESTAMP (inbuf), GST_BUFFER_DURATION (inbuf));
+          break;
+        default:
+          break;
+        }
+      } else if ( ffmpegdec->frame->format == 1 ){
+        switch(ffmpegdec->context->codec_id) {
+        case AV_CODEC_ID_TEXT:
+           gst_ffmpegsubdec_text(ffmpegdec, ffmpegdec->frame,
             GST_BUFFER_TIMESTAMP (inbuf), GST_BUFFER_DURATION (inbuf));
           break;
         default:
@@ -371,6 +536,7 @@ gst_ffmpegsubdec_register (GstPlugin * plugin)
     case AV_CODEC_ID_DVD_SUBTITLE:
     case AV_CODEC_ID_DVB_SUBTITLE:
     case AV_CODEC_ID_XSUB:
+    case AV_CODEC_ID_TEXT:
       break;
     default:
       goto next;
