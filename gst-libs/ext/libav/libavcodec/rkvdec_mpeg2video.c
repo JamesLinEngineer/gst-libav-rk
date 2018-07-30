@@ -169,7 +169,7 @@ static void fill_stream_data(AVCodecContext* avctx, const uint8_t  *buffer, uint
     memcpy(data_ptr + offset, buffer, size);
     ctx->stream_data->pkt_size += size;
 
-    av_log(avctx, AV_LOG_INFO, "fill_stream_data pkg_size %d size %d.\n", ctx->stream_data->pkt_size, size);
+    av_log(avctx, AV_LOG_DEBUG, "fill_stream_data pkg_size %d size %d.\n", ctx->stream_data->pkt_size, size);
 }
 
 
@@ -182,7 +182,7 @@ static int rkvdec_mpeg2video_regs_gen_reg(AVCodecContext *avctx)
     LPRKVDEC_PicParams_Mpeg2video dx = ctx->pic_param;
     LPRKVDEC_Mpeg2video_Regs reg = ctx->hw_regs;
 
-    av_log(avctx, AV_LOG_INFO, "rkvdec_Mpeg2video_regs_gen_reg");
+    av_log(avctx, AV_LOG_DEBUG, "rkvdec_Mpeg2video_regs_gen_reg");
 
     memset(ctx->hw_regs, 0, sizeof(RKVDEC_Mpeg2video_Regs));
     reg->config3.sw_dec_axi_rn_id = 0;
@@ -344,7 +344,7 @@ static int rkvdec_mpeg2video_start_frame(AVCodecContext          *avctx,
     Mpeg1Context *s1  = avctx->priv_data;
     MpegEncContext *s = &s1->mpeg_enc_ctx;
 
-    av_log(avctx, AV_LOG_INFO, "RK_Mpeg2video_DEC: rkvdec_Mpeg2video_start_frame\n");
+    av_log(avctx, AV_LOG_DEBUG, "RK_Mpeg2video_DEC: rkvdec_Mpeg2video_start_frame\n");
     fill_picture_parameters(s, ctx->pic_param);
     ctx->stream_data->pkt_size = 0;
 
@@ -360,20 +360,20 @@ static int rkvdec_mpeg2video_end_frame(AVCodecContext *avctx)
     MpegEncContext *h = &s->mpeg_enc_ctx;
     int ret;
 
-    av_log(avctx, AV_LOG_INFO, "RK_Mpeg2video_DEC: rkvdec_Mpeg2video_end_frame\n");
+    av_log(avctx, AV_LOG_DEBUG, "RK_Mpeg2video_DEC: rkvdec_Mpeg2video_end_frame\n");
     rkvdec_mpeg2video_regs_gen_reg(avctx);
 
     req.req = (unsigned int*)ctx->hw_regs;
     req.size = sizeof(*ctx->hw_regs);
 
-    av_log(avctx, AV_LOG_INFO, "ioctl VPU_IOC_SET_REG start.");
+    av_log(avctx, AV_LOG_DEBUG, "ioctl VPU_IOC_SET_REG start.");
     ret = ioctl(ctx->vpu_socket, VPU_IOC_SET_REG, &req);
     if (ret)
         av_log(avctx, AV_LOG_ERROR, "ioctl VPU_IOC_SET_REG failed ret %d\n", ret);
 
-    av_log(avctx, AV_LOG_INFO, "ioctl VPU_IOC_GET_REG start.");
+    av_log(avctx, AV_LOG_DEBUG, "ioctl VPU_IOC_GET_REG start.");
     ret = ioctl(ctx->vpu_socket, VPU_IOC_GET_REG, &req);
-    av_log(avctx, AV_LOG_INFO, "ioctl VPU_IOC_GET_REG success.");
+    av_log(avctx, AV_LOG_DEBUG, "ioctl VPU_IOC_GET_REG success.");
 
     if (ctx->hw_regs->interrupt.sw_dec_error_int) {
         h->current_picture_ptr->f->decode_error_flags = FF_DECODE_ERROR_INVALID_BITSTREAM;
@@ -397,7 +397,7 @@ static int rkvdec_mpeg2video_decode_slice(AVCodecContext *avctx,
                                    const uint8_t  *buffer,
                                    uint32_t        size)
 {
-    av_log(avctx, AV_LOG_INFO, "RK_Mpeg2video_DEC: rkvdec_Mpeg2video_decode_slice size:%d\n", size);
+    av_log(avctx, AV_LOG_DEBUG, "RK_Mpeg2video_DEC: rkvdec_Mpeg2video_decode_slice size:%d\n", size);
     fill_stream_data(avctx, buffer, size);
     return 0;
 }
@@ -407,7 +407,7 @@ static int rkvdec_mpeg2video_context_init(AVCodecContext *avctx)
     RKVDECMpeg2videoContext * const ctx = ff_rkvdec_get_context(avctx);
     int ret;
 
-    av_log(avctx, AV_LOG_INFO, "RK_Mpeg2video_DEC: rkvdec_Mpeg2video_context_init\n");
+    av_log(avctx, AV_LOG_DEBUG, "RK_Mpeg2video_DEC: rkvdec_Mpeg2video_context_init\n");
     ctx->allocator = &allocator_drm;
     ret = ctx->allocator->open(&ctx->allocator_ctx, 1);
     if (ret) {
@@ -453,7 +453,7 @@ static int rkvdec_mpeg2video_context_uninit(AVCodecContext *avctx)
 {
     RKVDECMpeg2videoContext * const ctx = ff_rkvdec_get_context(avctx);
 
-    av_log(avctx, AV_LOG_INFO, "RK_Mpeg2video_DEC: rkvdec_Mpeg2video_context_uninit\n");
+    av_log(avctx, AV_LOG_DEBUG, "RK_Mpeg2video_DEC: rkvdec_Mpeg2video_context_uninit\n");
     ctx->allocator->free(ctx->allocator_ctx, ctx->stream_data);
     ctx->allocator->free(ctx->allocator_ctx, ctx->qp_table);
     av_free(ctx->pic_param->qp_tab);
