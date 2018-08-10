@@ -78,6 +78,9 @@ static void gst_ffmpeg_sub_dec_base_init(GstFFMpegSubDecClass * klass)
   case AV_CODEC_ID_TEXT:
     sinkcaps = gst_caps_new_empty_simple ("text/x-raw");
     break;
+  case AV_CODEC_ID_ASS:
+    sinkcaps = gst_caps_new_empty_simple ("text/x-ass");
+    break;
   default:
     sinkcaps = gst_caps_from_string ("unknown/unknown");
   }
@@ -237,15 +240,23 @@ static void gst_ffmpegsubdec_text(GstFFMpegSubDec *ffmpegdec, AVSubtitle* sub, G
              data = sub->rects[i]->ass;
              char * rawContent = sub->rects[i]->ass;
              ptr = g_malloc(size);
-             int hour1, hour2, min1, min2, sec1, sec2, msec1, msec2, index;
+             int hour1, hour2,hour3,min1, min2, min3,sec1, sec2,sec3, msec1, msec2,msec3, index;
              char* txtContent[MAX_SUBTITLE_LENGTH]= {0};
              if(strlen(rawContent)>= (MAX_SUBTITLE_LENGTH-1)){
                  GST_ERROR("invalid rawContent; Too long");
              }
-             if(sscanf(rawContent, "Dialogue: %2d,%02d:%02d:%02d.%02d,%02d:%02d:%02d.%02d,Default,%[^\r\n]",
-                       &index, &hour1, &min1, &sec1, &msec1, &hour2, &min2, &sec2, &msec2, txtContent) != 10) {
-                    GST_ERROR(" ERROR_MALFORMED; txtContent:%s", txtContent);
-              }
+             if(ffmpegdec->codec->id == AV_CODEC_ID_TEXT){
+                 if(sscanf(rawContent, "Dialogue: %2d,%02d:%02d:%02d.%02d,%02d:%02d:%02d.%02d,Default,%[^\r\n]",
+                           &index, &hour1, &min1, &sec1, &msec1, &hour2, &min2, &sec2, &msec2, txtContent) != 10) {
+                        GST_ERROR(" ERROR_MALFORMED; txtContent:%s", txtContent);
+                  }
+             } else if(ffmpegdec->codec->id == AV_CODEC_ID_ASS){
+                 if(sscanf(rawContent, "Dialogue: %d,%d:%2d:%2d.%2d,%d:%2d:%2d.%2d,Default,,%4d,%4d,%4d,,%[^\r\n]", 
+                           &index, &hour1, &min1, &sec1, &msec1, &hour2, &min2, &sec2, &msec2, &hour3, &min3, &sec3, txtContent) != 12) {
+                        GST_ERROR(" ERROR_MALFORMED; txtContent:%s", txtContent);
+                  }
+             }
+
              int  txtLen = strlen(txtContent);
              if(txtLen <= 0) {
                 GST_ERROR("invalid rawContent;NULL");
@@ -260,7 +271,7 @@ static void gst_ffmpegsubdec_text(GstFFMpegSubDec *ffmpegdec, AVSubtitle* sub, G
             GST_BUFFER_PTS(buffer) = ts;
             GST_BUFFER_DURATION(buffer) = dur;
 
-            GST_ERROR_OBJECT(ffmpegdec, " Have text w:%d, h:%d, ts %"
+            GST_DEBUG_OBJECT(ffmpegdec, " Have text w:%d, h:%d, ts %"
             GST_TIME_FORMAT ", dur %" G_GINT64_FORMAT, w, h, GST_TIME_ARGS (ts), GST_BUFFER_DURATION (buffer));
 
             gst_pad_push(ffmpegdec->srcpad, buffer);
@@ -433,6 +444,7 @@ gst_ffmpegsubdec_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuf)
       } else if ( ffmpegdec->frame->format == 1 ){
         switch(ffmpegdec->context->codec_id) {
         case AV_CODEC_ID_TEXT:
+        case AV_CODEC_ID_ASS:
            gst_ffmpegsubdec_text(ffmpegdec, ffmpegdec->frame,
             GST_BUFFER_TIMESTAMP (inbuf), GST_BUFFER_DURATION (inbuf));
           break;
@@ -537,6 +549,7 @@ gst_ffmpegsubdec_register (GstPlugin * plugin)
     case AV_CODEC_ID_DVB_SUBTITLE:
     case AV_CODEC_ID_XSUB:
     case AV_CODEC_ID_TEXT:
+    case AV_CODEC_ID_ASS:
       break;
     default:
       goto next;
