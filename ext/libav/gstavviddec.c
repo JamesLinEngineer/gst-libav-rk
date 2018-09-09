@@ -51,6 +51,8 @@
 #define REQUIRED_POOL_MAX_BUFFERS       32
 #define DEFAULT_STRIDE_ALIGN            31
 #define DEFAULT_ALLOC_PARAM             { 0, DEFAULT_STRIDE_ALIGN, 0, 0, }
+#define IMAGE_4K_SIZE                  3840*2160*3/2
+#define CALC_FPS_COUNT               100
 
 enum
 {
@@ -63,6 +65,40 @@ enum
   PROP_OUTPUT_CORRUPT,
   PROP_LAST
 };
+
+typedef struct
+{
+  float fps;
+  int hdmi_rate;
+  float video_rate;
+  guint64 calcPts;
+  int calcnum;
+  int xresolution;
+  int yresolution;
+  
+} GstHdmiMatch;
+
+GstHdmiMatch hdmi_match ={60, 60, 30, GST_CLOCK_TIME_NONE, 0};
+int abd_time =0;
+
+#define HDMI_CARD_PATH "/sys/devices/platform/display-subsystem/drm/card0/card0-HDMI-A-1/mode"
+static gint hdmi_get_current_mode(guint16 *xres, guint16 *yres, gfloat *fps) {
+  gchar  value[50];
+  gint ret = -1;
+  gint fd;
+  fd = open(HDMI_CARD_PATH, 0x0 /*O_RDONLY*/, 0);
+  if (fd > 0) {
+    ret = read(fd, value, 50);
+    if (ret > 0) {
+      sscanf(value, "%dx%dp%f", xres, yres, fps);
+    }
+    close(fd);
+  }
+  GST_DEBUG("hdmi_get_current_mode value fps;%f", *fps);
+  return ret;
+}
+
+
 
 /* A number of function prototypes are given so we can refer to them later. */
 static void gst_ffmpegviddec_base_init (GstFFMpegVidDecClass * klass);
@@ -278,6 +314,7 @@ gst_ffmpegviddec_init (GstFFMpegVidDec * ffmpegdec)
       (ffmpegdec), TRUE);
 
   gst_video_decoder_set_needs_format (GST_VIDEO_DECODER (ffmpegdec), TRUE);
+  hdmi_get_current_mode(&hdmi_match.xresolution, &hdmi_match.yresolution, &hdmi_match.fps);
 }
 
 static void
@@ -292,8 +329,13 @@ gst_ffmpegviddec_finalize (GObject * object)
     av_free (ffmpegdec->context);
     ffmpegdec->context = NULL;
   }
-
+  
   G_OBJECT_CLASS (parent_class)->finalize (object);
+  hdmi_match.video_rate= 30;
+  hdmi_match.calcPts =GST_CLOCK_TIME_NONE;
+  hdmi_match.calcnum = 0;
+  abd_time = 0;
+
 }
 
 static void
@@ -1336,6 +1378,191 @@ gst_avpacket_init (AVPacket * packet, guint8 * data, guint size)
   packet->size = size;
 }
 
+static gboolean abandon_frame(int abandon)
+{
+     if ((abandon < 50) && (abandon == 5)) {
+         abd_time++;
+         if (abd_time == abandon) {
+             abd_time = 0;
+             return FALSE;
+         } else if (abd_time%2) {
+             return FALSE;
+         } else {
+             return TRUE;
+         }
+     } else {
+         abd_time++;
+         if (abd_time == abandon) {
+             abd_time = 0;
+             return TRUE;
+         } else if (abd_time%2) {
+             return TRUE;
+         } else {
+             return FALSE;
+         }
+     }
+     return FALSE;
+}
+static gboolean abandon_frame_base(int abandon)
+{
+     GST_DEBUG("for  abandon_frame, abandon = %d", abandon);
+     if ((abandon < 50) && (abandon)) {
+         if (abd_time++ == abandon) {
+             abd_time = 0;
+             return TRUE;
+         } else {
+             return FALSE;
+         }
+     } else if (abandon == 60) {
+         abd_time++;
+         if (abd_time%2 == 0) {
+             return FALSE;
+         } else if (abd_time == 5) {
+             abd_time = 0;
+             return TRUE;
+         } else {
+             return TRUE;
+         }
+     } else if (abandon == 120) {
+         abd_time ++;
+         if (abd_time == 1 || // 2
+             abd_time == 3 || // 3
+             abd_time == 6 || // 2
+             abd_time == 8 || // 3
+             abd_time == 11   // 2
+             ) {
+             return FALSE;
+         } else if (abd_time >= 12) {
+             abd_time = 0;
+             return TRUE;
+         } else {
+             return TRUE;
+         }
+     } else {
+         return FALSE;
+     }
+}
+
+  static gint match_frame_to_hdmi(float hdmirate, float video_rate)
+{
+     if (hdmirate < 61.5 && hdmirate > 58) {
+         hdmi_match.hdmi_rate= 60;
+     } else if (hdmirate <= 51 && hdmirate >= 49) {
+          hdmi_match.hdmi_rate = 50;
+     } else if (hdmirate <= 31 && hdmirate >= 29) {
+          hdmi_match.hdmi_rate = 30;
+     } else if (hdmirate < 24.5 && hdmirate >= 23.5) {
+          hdmi_match.hdmi_rate = 24;
+     } else if (hdmirate <= 26 && hdmirate > 24.5) {
+          hdmi_match.hdmi_rate = 25;
+     }
+     if (video_rate >  hdmi_match.hdmi_rate) {
+         GST_DEBUG("for match frame to hdmi rate hdmi_freq = %d, video_rate = %.2f", hdmi_match.hdmi_rate,video_rate);
+         switch ( hdmi_match.hdmi_rate) {
+         case 24 :
+             if ((video_rate > 24.5) && (video_rate < 25.5)) {
+                 return 24/1;
+             } else if ((video_rate > 29) && (video_rate < 31)) {
+                 return 4/1;
+             } else if ((video_rate >= 59) && (video_rate < 61)) {
+                 return 60;
+                 //return 0;
+             } else {
+                 return 0;
+             }
+             break;
+         case 25 :
+             if ((video_rate > 29) && (video_rate <31)) {
+                 return 5/1;
+             } else if ((video_rate >= 49) && (video_rate < 51)) {
+                 return 1/1;
+             } else if ((video_rate >= 59) && (video_rate < 61)) {
+                 return 120;
+                 //return 0;
+             } else {
+                 return 0;
+             }
+             break;
+         case 30 :
+             if ((video_rate >= 59) && (video_rate < 61)) {
+                 return 1/1;
+             } else {
+                 return 0;
+             }
+             break ;
+         case 50 :
+             if ((video_rate >= 59) && (video_rate < 61)) {
+                 return 5/1;
+             } else {
+                 return 0;
+             }
+             break;
+         case 60:
+             if ((video_rate >= 119) && (video_rate < 121)) {
+                 return 1/1;
+             } else {
+                 return 0;
+             }
+             break;
+         default :
+             return 0;
+         }
+     } else {
+         return 0;
+     }
+}
+
+static gboolean need_match(GstVideoCodecFrame * outbuffer, GstHdmiMatch *hdmimatch){
+    
+    GST_DEBUG("hdmimatch->fps:%f, isvilad:%d, size:%d", hdmimatch->fps, !GST_CLOCK_TIME_IS_VALID(outbuffer->duration), gst_buffer_get_size (outbuffer->output_buffer));
+    if(hdmimatch->fps >= 60 || gst_buffer_get_size (outbuffer->output_buffer) < IMAGE_4K_SIZE){
+         return FALSE;
+     } else if(!GST_CLOCK_TIME_IS_VALID(outbuffer->duration) && GST_CLOCK_TIME_IS_VALID(outbuffer->pts)){
+        if(!GST_CLOCK_TIME_IS_VALID(hdmimatch->calcPts) ){
+           hdmimatch->calcPts = outbuffer->pts;
+        } else if(hdmimatch->calcnum < CALC_FPS_COUNT){
+           hdmimatch->video_rate = 1/(float)(GST_TIME_AS_SECONDS((float)(outbuffer->pts))- GST_TIME_AS_SECONDS((float)(hdmimatch->calcPts)) );
+           hdmimatch->calcPts = outbuffer->pts;
+           hdmimatch->calcnum++;
+           GST_ERROR("calc hdmimatch->video_rate:%f, hdmimatch->calcnum:%d", hdmimatch->video_rate, hdmimatch->calcnum);        
+        }
+        return TRUE;
+    } else if(GST_CLOCK_TIME_IS_VALID(outbuffer->duration)) {
+        hdmimatch->video_rate = 1/(float)(GST_TIME_AS_SECONDS((float)( outbuffer->duration)));
+        return TRUE;
+    } else {
+        hdmimatch->video_rate = 60;
+        return TRUE;
+    }
+
+}
+static gboolean need_drop(GstVideoCodecFrame * outbuffer, GstHdmiMatch *hdmimatch){
+
+    int abadonnum =  match_frame_to_hdmi(hdmimatch->fps, hdmimatch->video_rate);
+
+    GST_DEBUG("maunly dropped: videorate:%f, abadonnum:%d, second:%d", hdmimatch->video_rate, abadonnum, outbuffer->duration);
+    if ((hdmimatch->hdmi_rate == 30) && ( hdmimatch->video_rate >= 49 &&  hdmimatch->video_rate <= 51)){
+        if(abandon_frame(5)){
+            return TRUE;
+        } else{
+            return FALSE;
+        }
+    } else if ((hdmimatch->hdmi_rate == 24) && (hdmimatch->video_rate >= 49 && hdmimatch->video_rate <= 51)) {
+        if (abandon_frame(25)) {
+            return TRUE;
+        } else {
+            return FALSE;
+        }
+    }
+    if(abandon_frame_base(abadonnum)){
+         return TRUE;
+     } else {
+        return FALSE;
+    }
+
+}
+
+
 /* gst_ffmpegviddec_[video|audio]_frame:
  * ffmpegdec:
  * data: pointer to the data to decode
@@ -1448,6 +1675,13 @@ gst_ffmpegviddec_video_frame (GstFFMpegVidDec * ffmpegdec,
     goto no_output;
   }
 #endif
+
+  if( need_match(out_frame, &hdmi_match )){
+        if(need_drop(out_frame, &hdmi_match)){
+           GST_DEBUG_OBJECT (ffmpegdec,"maunly dropped: abd_time: %d, size:%d", abd_time, gst_buffer_get_size (GST_BUFFER_CAST (out_frame->output_buffer)));
+            goto no_output;
+        }
+  }
 
   if (!gst_ffmpegviddec_negotiate (ffmpegdec, ffmpegdec->context,
           ffmpegdec->picture))
