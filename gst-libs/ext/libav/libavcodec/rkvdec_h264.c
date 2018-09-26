@@ -619,6 +619,16 @@ static int rkvdec_h264_regs_gen_scanlist(AVCodecContext* avctx)
     return 0;
 }
 
+static int align_256_odd(int val)
+{
+    return ALIGN(val, 256) | 256;
+}
+static int align_16(int val)
+{
+    return ALIGN(val, 16);
+}
+
+
 static int rkvdec_h264_regs_gen_reg(AVCodecContext *avctx)
 {
     H264Context * const h = avctx->priv_data;
@@ -637,10 +647,20 @@ static int rkvdec_h264_regs_gen_reg(AVCodecContext *avctx)
     hw_regs->swreg5_stream_rlc_len.sw_stream_len = ALIGN(ctx->stream_data->pkt_size, 16);
     hw_regs->swreg3_picpar.sw_slice_num_lowbits = 0x7ff;
     hw_regs->swreg3_picpar.sw_slice_num_highbit = 1;
-    hw_regs->swreg3_picpar.sw_y_hor_virstride = ALIGN(pic->f->width * (pp->bit_depth_luma_minus8 + 8) / 8, stride_align) / 16;
-    hw_regs->swreg3_picpar.sw_uv_hor_virstride =  ALIGN(pic->f->width * (pp->bit_depth_chroma_minus8 + 8) / 8, stride_align) / 16;
-    hw_regs->swreg8_y_virstride.sw_y_virstride = ALIGN(ALIGN(pic->f->width * (pp->bit_depth_luma_minus8 + 8) / 8, stride_align) * ALIGN(pic->f->height, 16), 16) / 16;
-    hw_regs->swreg9_yuv_virstride.sw_yuv_virstride = ALIGN(ALIGN(pic->f->width * (pp->bit_depth_chroma_minus8 + 8) / 8, stride_align) * ALIGN(pic->f->height, 16) * 3 / 2, 16) / 16;
+   
+    if(pic->f->width > 3840){
+        hw_regs->swreg3_picpar.sw_y_hor_virstride = align_256_odd(pic->f->width * (pp->bit_depth_luma_minus8 + 8) / 8) / 16;
+        hw_regs->swreg3_picpar.sw_uv_hor_virstride =  align_256_odd(pic->f->width * (pp->bit_depth_chroma_minus8 + 8) / 8) / 16;
+        hw_regs->swreg8_y_virstride.sw_y_virstride = ALIGN(align_256_odd(pic->f->width * (pp->bit_depth_luma_minus8 + 8) / 8) * ALIGN(pic->f->height, 16), 16) / 16;
+        hw_regs->swreg9_yuv_virstride.sw_yuv_virstride = ALIGN(align_256_odd(pic->f->width * (pp->bit_depth_chroma_minus8 + 8) / 8) * ALIGN(pic->f->height, 16) * 3 / 2, 16) / 16;
+    } else{
+        hw_regs->swreg3_picpar.sw_y_hor_virstride = ALIGN(pic->f->width * (pp->bit_depth_luma_minus8 + 8) / 8, stride_align) / 16;
+        hw_regs->swreg3_picpar.sw_uv_hor_virstride =  ALIGN(pic->f->width * (pp->bit_depth_chroma_minus8 + 8) / 8, stride_align) / 16;
+        hw_regs->swreg8_y_virstride.sw_y_virstride = ALIGN(ALIGN(pic->f->width * (pp->bit_depth_luma_minus8 + 8) / 8, stride_align) * ALIGN(pic->f->height, 16), 16) / 16;
+        hw_regs->swreg9_yuv_virstride.sw_yuv_virstride = ALIGN(ALIGN(pic->f->width * (pp->bit_depth_chroma_minus8 + 8) / 8, stride_align) * ALIGN(pic->f->height, 16) * 3 / 2, 16) / 16;
+
+    }
+
     mb_width = pp->wFrameWidthInMbsMinus1 + 1;
     mb_height = (2 - pp->frame_mbs_only_flag) * (pp->wFrameHeightInMbsMinus1 + 1);
     mv_size = mb_width * mb_height * 8;
@@ -819,8 +839,14 @@ static int rkvdec_h264_alloc_frame(AVCodecContext *avctx, AVFrame *frame)
     av_assert0(frame);
     av_assert0(frame->width);
     av_assert0(frame->height);
-    frame->width = ALIGN(frame->width, 16);
-    frame->height = ALIGN(frame->height, 16);
+    
+    if(frame->width > 3840){  
+      frame->width = align_256_odd(frame->width);
+      frame->height = align_16(frame->height);
+    } else {
+      frame->width = ALIGN(frame->width, 16);
+      frame->height = ALIGN(frame->height, 16);
+    }
 
     // 4K use colmv separate configure to save memory
     if (frame->width >= 3840)
