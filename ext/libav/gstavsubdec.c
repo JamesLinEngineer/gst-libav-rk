@@ -399,7 +399,6 @@ gst_ffmpegsubdec_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuf)
       GST_TIME_FORMAT ", dur %" G_GINT64_FORMAT, gst_buffer_get_size (inbuf),
       GST_TIME_ARGS (GST_BUFFER_TIMESTAMP (inbuf)), GST_BUFFER_DURATION (inbuf));
 
-  inbuf = gst_buffer_ref (inbuf);
   gst_buffer_map (inbuf, &map, GST_MAP_READ);
 
   bdata = map.data;
