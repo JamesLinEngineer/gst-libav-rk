@@ -84,6 +84,10 @@ static void gst_ffmpeg_sub_dec_base_init(GstFFMpegSubDecClass * klass)
   default:
     sinkcaps = gst_caps_from_string ("unknown/unknown");
   }
+  
+  if(strstr(in_plugin->name,"ssa")){
+    sinkcaps = gst_caps_new_empty_simple ("text/x-ssa");
+  }
 
   srccaps = gst_caps_new_simple("video/x-raw",
     "format", G_TYPE_STRING, "RGBA",
@@ -382,6 +386,104 @@ int  filterSpecialTag(char* rawContent)
     return -1;
 }
 
+static void gst_ffmpegsubdec_text_direct(GstFFMpegSubDec *ffmpegdec, gchar* sub, gint bsize, GstClockTime ts, GstClockTime dur)
+{
+
+    if(bsize > MAX_SUBTITLE_LENGTH){
+        return;
+    }
+    gint i, j, w, h, size;
+    guint8 *data;
+    guint8 *ptr;
+    gchar* utf8sub;
+     GError *err = NULL;
+    GstBuffer *buffer, *buffernull;
+    if (sub ) {
+
+        size = bsize;
+        gchar  rawContent[MAX_SUBTITLE_LENGTH]={0};
+        gchar *tempContent, dstContent[MAX_SUBTITLE_LENGTH]={0};
+        gint rawsize, tempsize, dstsize = 0;
+         // copy sub 
+        strncpy(rawContent ,sub,bsize);
+        rawsize = strlen(rawContent);
+        GST_ERROR("rawContent:%s, rawsize:%d", rawContent, rawsize);       
+
+        int32_t needFindCommaCnt = 8;
+        if(ffmpegdec->codec->id == AV_CODEC_ID_TEXT){
+            needFindCommaCnt = 4;
+        }
+        int32_t cnt =0;
+        int i =0; 
+
+        tempContent = rawContent;
+        tempsize = rawsize;
+
+
+        // find text part
+        for (i =0; i <rawsize; i++) {
+            if (*(rawContent + i) == 0x2C) {
+                cnt++;
+                if (cnt == needFindCommaCnt) {
+                    break;
+                }
+            }
+        }
+        GST_ERROR("tempContent:%s, i:%d", tempContent, i);     
+
+        if ((i+1) >= rawsize) {
+           ;
+        } else {
+            tempContent = rawContent + i + 1;
+            tempsize -=i;
+        }
+
+        GST_ERROR("tempContent:%s, tempsize:%d", tempContent, tempsize);
+
+        gboolean enAbleCopyFlag = FALSE;
+        guint dstFindSize =0;
+
+        strncpy(dstContent,tempContent, tempsize);
+        dstsize = tempsize;
+        for (i =0; i < tempsize; i++) {
+            if ((*(tempContent + i) == '{')) {
+                enAbleCopyFlag = FALSE;
+                continue;
+            } else if ((*(tempContent + i) == '}')) {
+                enAbleCopyFlag = TRUE;
+                continue;
+            }
+
+            if (enAbleCopyFlag == TRUE) {
+                dstContent[dstFindSize] = *(tempContent + i);
+                dstFindSize++;
+                dstsize = dstFindSize;
+            }
+        }
+
+
+        filterSpecialChar(dstContent);
+
+        ptr = g_malloc(dstsize);
+        strncpy(ptr, dstContent, dstsize);
+        GST_ERROR("dstContent:%s, dstsize:%d", dstContent, dstsize);
+        buffer = gst_buffer_new_allocate (NULL, dstsize, NULL);
+        gst_buffer_fill(buffer, 0, ptr, dstsize);
+        gst_buffer_add_video_meta (buffer, GST_VIDEO_FRAME_FLAG_NONE, GST_VIDEO_FORMAT_NV21, w, h);
+
+        GST_BUFFER_PTS(buffer) = ts;
+        GST_BUFFER_DURATION(buffer) = dur;
+
+        GST_DEBUG_OBJECT(ffmpegdec, " Have text w:%d, h:%d, ts %"
+        GST_TIME_FORMAT ", dur %" G_GINT64_FORMAT, w, h, GST_TIME_ARGS (ts), GST_BUFFER_DURATION (buffer));
+
+        gst_pad_push(ffmpegdec->srcpad, buffer);
+        g_free(ptr);
+
+        push_void_buffer(ffmpegdec, ts+dur, 0);
+  
+    }
+}
 
 static GstFlowReturn
 gst_ffmpegsubdec_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuf)
@@ -403,6 +505,10 @@ gst_ffmpegsubdec_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuf)
 
   bdata = map.data;
   bsize = map.size;
+  if (ffmpegdec->context->codec_id == AV_CODEC_ID_SSA ||ffmpegdec->context->codec_id == AV_CODEC_ID_ASS || ffmpegdec->context->codec_id == AV_CODEC_ID_TEXT) {
+      gst_ffmpegsubdec_text_direct(ffmpegdec, bdata, bsize,GST_BUFFER_TIMESTAMP (inbuf),GST_BUFFER_DURATION (inbuf));
+      goto beach;
+  }
 
   do {
     AVPacket packet = {0};
@@ -455,6 +561,8 @@ gst_ffmpegsubdec_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuf)
     }
   } 
   while (bsize > 0 && retry--);
+  
+beach:
 
   gst_buffer_unmap(inbuf, &map);
   gst_buffer_unref(inbuf);
@@ -549,6 +657,7 @@ gst_ffmpegsubdec_register (GstPlugin * plugin)
     case AV_CODEC_ID_XSUB:
     case AV_CODEC_ID_TEXT:
     case AV_CODEC_ID_ASS:
+    case AV_CODEC_ID_SSA:
       break;
     default:
       goto next;
