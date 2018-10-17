@@ -23,6 +23,7 @@
 
 #include "libavutil/avassert.h"
 #include "libavutil/pixdesc.h"
+#include "libavutil/buffer_internal.h"
 
 #include "internal.h"
 #include "thread.h"
@@ -95,6 +96,12 @@ static HEVCFrame *alloc_frame(HEVCContext *s)
         frame->rpl_buf = av_buffer_allocz(s->pkt.nb_nals * sizeof(RefPicListTab));
         if (!frame->rpl_buf)
             goto fail;
+        
+        if(s->avctx->hwaccel && s->tab_mvf_pool->size > sizeof(MvField)){
+            av_buffer_pool_uninit( s->tab_mvf_pool);
+            s->tab_mvf_pool = av_buffer_pool_init(sizeof(MvField),
+                                          av_buffer_allocz);
+        }
 
         frame->tab_mvf_buf = av_buffer_pool_get(s->tab_mvf_pool);
         if (!frame->tab_mvf_buf)
